@@ -976,4 +976,4 @@ MINS=$((ELAPSED / 60))
 SECS=$((ELAPSED % 60))
 
 echo ""
-echo -e "${GREEN}Rotation Lesson Collection Script completed in ${MINS}m ${SECS}s.${NC}"
+echo -e "${GREEN}Lesson-materials packaging completed in ${MINS}m ${SECS}s.${NC}"
