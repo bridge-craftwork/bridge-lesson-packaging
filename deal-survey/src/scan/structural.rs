@@ -5,8 +5,8 @@
 //! `extra_tags` inventory of supplemental PBN tags, so this stage just reads
 //! those off rather than re-scanning raw text.
 
-use crate::model::{Commentary, ContractProvenance, Source, Structural};
-use bridge_types::Board;
+use crate::model::{strain_index, AuctionInfo, Commentary, ContractProvenance, Source, Structural};
+use bridge_types::{Auction, Board, Call, Direction, Strain};
 
 /// Standard PBN tags that carry no dedicated `Board` field and so land in
 /// `extra_tags`, but are *not* collection-specific — excluded from the custom
@@ -38,7 +38,7 @@ pub fn structural_of(board: &Board) -> Structural {
     Structural {
         contract: board.contract.clone(),
         contract_provenance: provenance,
-        auction: board.auction.is_some(),
+        auction: auction_info(board.auction.as_ref()),
         play: board.play.is_some(),
         commentary: Commentary {
             present,
@@ -48,6 +48,57 @@ pub fn structural_of(board: &Board) -> Structural {
         },
         custom_tags,
     }
+}
+
+/// Cheap auction-complexity proxies from the parsed auction.
+fn auction_info(auction: Option<&Auction>) -> AuctionInfo {
+    let Some(a) = auction else {
+        return AuctionInfo::absent();
+    };
+    let (mut bids, mut doubles, mut high_bids) = (0u8, 0u8, 0u8);
+    let (mut ns_bid, mut ew_bid) = (false, false);
+    for (i, ac) in a.calls.iter().enumerate() {
+        match ac.call {
+            Call::Bid { level, strain } => {
+                bids += 1;
+                if matches!(a.caller(i), Direction::North | Direction::South) {
+                    ns_bid = true;
+                } else {
+                    ew_bid = true;
+                }
+                if is_high_bid(level, strain) {
+                    high_bids += 1;
+                }
+            }
+            Call::Double | Call::Redouble => doubles += 1,
+            _ => {}
+        }
+    }
+    let double_of_final = a
+        .final_contract()
+        .map(|fc| fc.doubled || fc.redoubled)
+        .unwrap_or(false);
+    AuctionInfo {
+        present: true,
+        bids,
+        contested: ns_bid && ew_bid,
+        doubles,
+        double_of_final,
+        high_bids,
+    }
+}
+
+/// A contract bid above 3NT, excluding the normal games 4H/4S/5C/5D.
+fn is_high_bid(level: u8, strain: Strain) -> bool {
+    let rank = (level as i32 - 1) * 5 + strain_index(strain) as i32;
+    let three_nt = 2 * 5 + strain_index(Strain::NoTrump) as i32;
+    if rank <= three_nt {
+        return false;
+    }
+    !matches!(
+        (level, strain),
+        (4, Strain::Hearts) | (4, Strain::Spades) | (5, Strain::Clubs) | (5, Strain::Diamonds)
+    )
 }
 
 /// Build a `Source` for a board within a collection scan.
@@ -75,7 +126,7 @@ mod tests {
         let s = structural_of(&board);
         assert_eq!(s.contract.as_deref(), Some("4S"));
         assert_eq!(s.contract_provenance, ContractProvenance::Explicit);
-        assert!(!s.auction); // none attached
+        assert!(!s.auction.present); // none attached
         assert!(s.commentary.present);
         assert_eq!(s.commentary.style.as_deref(), Some("inline"));
         assert_eq!(s.custom_tags, vec!["SkillPath".to_string()]);

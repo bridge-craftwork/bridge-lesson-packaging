@@ -100,6 +100,21 @@ fn print_detail(p: &CollectionProfile) {
             d.not_makeable, d.no_contract, d.incomplete
         );
     }
+    // Auction-complexity proxies (means/percentages over deals with an auction).
+    let a = &p.auction;
+    if a.with_auction > 0 {
+        let n = a.with_auction;
+        println!(
+            "  auction : {:.1} bids avg  ·  contested {}  ·  doubles {} ({} deals, {} final-dbl)  ·  high-bids {} ({} deals)",
+            a.total_bids as f64 / n as f64,
+            pct(a.contested, n),
+            a.total_doubles,
+            a.with_doubles,
+            a.double_of_final,
+            a.total_high_bids,
+            a.with_high_bids,
+        );
+    }
     print_dist("  strain ", &p.contract_mix.by_strain);
     print_dist("  level  ", &p.contract_mix.by_level);
     print_dist("  declarer", &p.contract_mix.by_declarer);

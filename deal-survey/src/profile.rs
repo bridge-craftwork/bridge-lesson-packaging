@@ -19,6 +19,7 @@ pub struct CollectionProfile {
     pub deal_count: usize,
     pub difficulty: DifficultyHistogram,
     pub structural: StructuralCoverage,
+    pub auction: AuctionProfile,
     pub contract_mix: ContractMix,
     /// Probe name → how many deals it fired on.
     pub techniques: BTreeMap<String, usize>,
@@ -50,6 +51,20 @@ pub struct StructuralCoverage {
     pub with_explicit_contract: usize,
     /// Custom (collection-specific) tag → number of deals carrying it.
     pub custom_tags: BTreeMap<String, usize>,
+}
+
+/// Aggregate auction-complexity proxies (over deals that have an auction).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AuctionProfile {
+    pub with_auction: usize,
+    /// Sum of contract-bid counts (for a mean).
+    pub total_bids: usize,
+    pub contested: usize,
+    pub with_doubles: usize,
+    pub total_doubles: usize,
+    pub double_of_final: usize,
+    pub with_high_bids: usize,
+    pub total_high_bids: usize,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -117,14 +132,32 @@ pub fn build(records: Vec<DealRecord>, editorial: Option<Editorial>) -> Collecti
 
     let mut difficulty = DifficultyHistogram::default();
     let mut structural = StructuralCoverage::default();
+    let mut auction = AuctionProfile::default();
     let mut contract_mix = ContractMix::default();
     let mut techniques: BTreeMap<String, usize> = BTreeMap::new();
 
     for rec in &records {
         // Structural coverage.
         let s = &rec.structural;
-        if s.auction {
+        let a = &s.auction;
+        if a.present {
             structural.with_auction += 1;
+            auction.with_auction += 1;
+            auction.total_bids += a.bids as usize;
+            auction.total_doubles += a.doubles as usize;
+            auction.total_high_bids += a.high_bids as usize;
+            if a.contested {
+                auction.contested += 1;
+            }
+            if a.doubles > 0 {
+                auction.with_doubles += 1;
+            }
+            if a.double_of_final {
+                auction.double_of_final += 1;
+            }
+            if a.high_bids > 0 {
+                auction.with_high_bids += 1;
+            }
         }
         if s.play {
             structural.with_play += 1;
@@ -177,6 +210,7 @@ pub fn build(records: Vec<DealRecord>, editorial: Option<Editorial>) -> Collecti
         deal_count: records.len(),
         difficulty,
         structural,
+        auction,
         contract_mix,
         techniques,
         editorial,
@@ -232,7 +266,14 @@ mod tests {
             structural: Structural {
                 contract: Some(contract.split_whitespace().next().unwrap().to_string()),
                 contract_provenance: ContractProvenance::Explicit,
-                auction: true,
+                auction: AuctionInfo {
+                    present: true,
+                    bids: 4,
+                    contested: false,
+                    doubles: 0,
+                    double_of_final: false,
+                    high_bids: 0,
+                },
                 play: false,
                 commentary: Commentary { present: true, style: Some("inline".into()) },
                 custom_tags: vec!["SkillPath".into()],

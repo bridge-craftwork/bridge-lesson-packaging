@@ -40,11 +40,44 @@ pub struct Structural {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contract: Option<String>,
     pub contract_provenance: ContractProvenance,
-    pub auction: bool,
+    pub auction: AuctionInfo,
     pub play: bool,
     pub commentary: Commentary,
     /// Non-standard tag names present on the deal (e.g. bridge-mastery tags).
     pub custom_tags: Vec<String>,
+}
+
+/// Cheap structural proxies for auction complexity (not a bidding-difficulty
+/// score — that needs the deferred convention/topic baseline). Alerts are
+/// deliberately NOT counted: in lesson decks the alert box is used to explain
+/// standard bids, so it is not a signal of artificiality.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuctionInfo {
+    pub present: bool,
+    /// Number of contract bids (excludes passes and doubles).
+    pub bids: u8,
+    /// Both partnerships made a contract bid.
+    pub contested: bool,
+    /// Number of (re)double calls in the auction.
+    pub doubles: u8,
+    /// The final contract was left doubled or redoubled.
+    pub double_of_final: bool,
+    /// Contract bids above 3NT other than 4H/4S/5C/5D (slam tries / unusual
+    /// high bids — normal major/minor games are excluded).
+    pub high_bids: u8,
+}
+
+impl AuctionInfo {
+    pub fn absent() -> Self {
+        AuctionInfo {
+            present: false,
+            bids: 0,
+            contested: false,
+            doubles: 0,
+            double_of_final: false,
+            high_bids: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
