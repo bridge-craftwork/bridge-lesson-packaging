@@ -1,0 +1,598 @@
+# deal-survey topic baselines — the difficulty PRIOR per lesson topic.
+#
+# Two independent ordinal axes, both normalized to 0–5 so equal numbers mean
+# comparable expertise across bidding and cardplay:
+#
+#   bidding  0 natural/no convention · 1 fundamental · 2 common gadget ·
+#            3 upper-intermediate · 4 advanced · 5 expert/rare
+#   cardplay 0 cash-out · 1 establish · 2 single technique (finesse/ruff) ·
+#            3 timing/entries/hold-up · 4 advanced (squeeze/endplay)
+#
+# The BIDDING scale is derived from Rick's convention ordering (Kantar,
+# "25 Bridge Conventions You Should Know" + "25 More…" + an Advanced tier):
+#   tier = book base (bk1 = 1, bk2 = 2, advanced = 5) + section offset
+#          (§1 = 0, §2 = 1, §3 = 2); Novice situations = 0.
+# Where a convention appears in more than one book, the lower (earlier) tier wins.
+#
+# MATCHING: each deal takes the FIRST topic whose any `match` string is a
+# case-insensitive substring of its lesson path (record `source.file`). Entries
+# are ordered MOST-SPECIFIC / hardest FIRST so specific names win over generic
+# ones (e.g. "Reverse Flannery" and "Reverse Drury" before "Reverse"; "Muppet
+# Stayman" before "Stayman"). Unmatched deals fall to [defaults].
+#
+# Baselines are Rick's to tune; the derivation above is the starting rationale.
+
+[defaults]
+bidding = 1
+cardplay = 1
+
+# ============================================================================
+# CARDPLAY TOPICS (bidding incidental) — the play axis
+# ============================================================================
+
+[[topic]]
+name = "Squeeze"
+match = ["Squeeze"]
+bidding = 1
+cardplay = 4
+
+[[topic]]
+name = "Endplay / elimination"
+match = ["Endplay", "Elimination", "Throw-in", "Throw In"]
+bidding = 1
+cardplay = 4
+
+[[topic]]
+name = "Entries & timing"
+match = ["Entries", "Timing", "Hold-up", "Holdup", "Ducking", "Avoidance"]
+bidding = 1
+cardplay = 3
+
+[[topic]]
+name = "Finesse"
+match = ["Finesse"]
+bidding = 1
+cardplay = 2
+
+[[topic]]
+name = "Trump management / ruffing"
+match = ["Trumpmgmt", "Trump Management", "Ruff", "Crossruff", "Dummy Reversal"]
+bidding = 1
+cardplay = 2
+
+[[topic]]
+name = "Establishing tricks"
+match = ["Establish", "Length", "Promotion", "Developing Tricks"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Counting winners / cash-out"
+match = ["Counting Winners", "Cash", "Sure Tricks"]
+bidding = 1
+cardplay = 0
+
+[[topic]]
+name = "Defense / opening leads"
+# "Defense" is safe: it is NOT a substring of "Defensive" (Bidding), so this
+# catches the defensive-cardplay category without stealing competitive-bidding
+# lessons.
+match = ["Defense/", "Defense ", "Opening Lead", "OLead", "Defensive Play", "Defence",
+         "Signals", "Discard", "Second Hand", "SecondHand", "Third Hand", "Third-Hand",
+         "ThirdHand", "Trump Coup"]
+bidding = 1
+cardplay = 3
+
+[[topic]]
+name = "Planning the play"
+match = ["Planning", "Making a Plan", "Declarer Plan"]
+bidding = 1
+cardplay = 2
+
+[[topic]]
+name = "Suit combinations"
+match = ["Suit Combination", "Combinations"]
+bidding = 1
+cardplay = 2
+
+[[topic]]
+name = "Combining chances / safety"
+match = ["Combining Chances", "Taking All Your Chances", "Safety Play", "Two Chances"]
+bidding = 1
+cardplay = 3
+
+# ============================================================================
+# ADVANCED CONVENTIONS (tier 5) — "BBO robots don't know these"
+# Ordered first so their specific names win over the generics below.
+# ============================================================================
+
+[[topic]]
+name = "Modified Jacoby 2NT (Cohen)"
+match = ["Modified Jacoby"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Reverse Flannery"
+match = ["Reverse Flannery"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Mini-Roman"
+match = ["Mini-Roman", "Mini Roman"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Mexican 2D (strong 2D)"
+match = ["Mexican", "Strong 2D"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Minorwood"
+match = ["Minorwood"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Muppet Stayman"
+match = ["Muppet"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Smolen"
+match = ["Smolen"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Spiral"
+match = ["Spiral"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "XYZ"
+match = ["XYZ"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Kokish"
+match = ["Kokish"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Parrish 2H bust"
+match = ["Parrish"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Ogust"
+match = ["Ogust"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Baze (slam after Stayman)"
+match = ["Baze"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Jordan / Truscott 2NT"
+match = ["Jordan", "Truscott"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "(Non)-serious 3NT"
+match = ["Serious 3NT", "Non-Serious"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Suction defense"
+match = ["Suction"]
+bidding = 5
+cardplay = 1
+
+[[topic]]
+name = "Quantitative follow-ons"
+match = ["Quantitative"]
+bidding = 5
+cardplay = 1
+
+# ============================================================================
+# BOOK 2 §3 "Sophisticated Stuff" (tier 4)
+# ============================================================================
+
+[[topic]]
+name = "Leaping Michaels"
+match = ["Leaping Michaels", "Leaping"]
+bidding = 4
+cardplay = 1
+
+[[topic]]
+name = "Inverted minor raises"
+match = ["Inverted Minor", "Inverted"]
+bidding = 4
+cardplay = 1
+
+[[topic]]
+name = "The forcing 1NT"
+match = ["Forcing 1NT", "Forcing Notrump", "Forcing 1 NT"]
+bidding = 4
+cardplay = 1
+
+[[topic]]
+name = "Italian (ace-and-king) cue bids"
+match = ["Italian Cue", "Ace-and-King", "Ace and King"]
+bidding = 4
+cardplay = 1
+
+[[topic]]
+name = "Unusual over unusual"
+match = ["Unusual over Unusual", "Unusual vs Unusual"]
+bidding = 4
+cardplay = 1
+
+[[topic]]
+name = "SOS & other redoubles"
+match = ["SOS", "Redouble"]
+bidding = 4
+cardplay = 1
+
+[[topic]]
+name = "Pick-a-slam 5NT"
+match = ["Pick-a-slam", "Pick a Slam"]
+bidding = 4
+cardplay = 1
+
+[[topic]]
+name = "Snapdragon doubles"
+match = ["Snapdragon"]
+bidding = 4
+cardplay = 1
+
+[[topic]]
+name = "Multi-coloured 2D"
+match = ["Multi-Colored", "Multi-Coloured", "Multi 2D", "Multi 2 Diamond"]
+bidding = 4
+cardplay = 1
+
+# ============================================================================
+# BOOK 1 §3 "Sophisticated" + BOOK 2 §2 "More Complicated" (tier 3)
+# ============================================================================
+
+[[topic]]
+name = "More about Stayman"
+match = ["More About Stayman"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Puppet Stayman"
+match = ["Puppet Stayman", "Puppet"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "New minor forcing"
+match = ["New Minor", "NMF"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Fourth-suit forcing"
+match = ["Fourth Suit", "Fourth-Suit", "FSF", "4SF", "4th Suit"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Exclusion Blackwood"
+match = ["Exclusion"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Lebensohl"
+match = ["Lebensohl", "Lebensol", "Leben"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "DONT defense to 1NT"
+match = ["DONT"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Meckwell defense to 1NT"
+match = ["Meckwell"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Control bids / cue bids"
+match = ["Control Bid", "Cue-Bid", "Cue Bid", "Cuebid"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Responsive doubles"
+match = ["Responsive"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Lead-directing doubles"
+match = ["Lead-Directing", "Lead Directing"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Support doubles"
+match = ["Support Double", "Support"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Ingberman"
+match = ["Ingberman"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Weak jump shifts"
+match = ["Weak Jump", "Weak Jump Shift"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Fit-showing jumps"
+match = ["Fit-Showing", "Fit Showing", "Fit-Jump"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "DOPI / ROPI / DEPO"
+match = ["DOPI", "ROPI", "DEPO"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Namyats"
+match = ["Namyats"]
+bidding = 3
+cardplay = 1
+
+# ============================================================================
+# BOOK 1 §2 "More Complicated" + BOOK 2 §1 (tier 2)
+# ============================================================================
+
+[[topic]]
+name = "Roman Keycard Blackwood"
+match = ["Roman Keycard", "RKC", "Keycard", "1430", "Roman"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Jacoby 2NT"
+match = ["Jacoby 2NT", "Jacoby2NT"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Splinters"
+match = ["Splinter"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Reverse Drury"
+match = ["Drury"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Bergen raises"
+match = ["Bergen"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Help-suit game tries"
+match = ["Help Suit", "Help-Suit", "Game Try", "Game Tries", "Help"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Cuebid raises"
+match = ["Cuebid Raise", "Cue-bid Raise"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Michaels cuebids & unusual NT"
+match = ["Michaels", "Unusual NT", "Unusual Notrump", "Unusual 2NT"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Cappelletti"
+match = ["Cappelletti", "Hamilton"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Flannery 2D"
+match = ["Flannery"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Four-suit transfers"
+match = ["Four-Suit Transfer", "Four Suit Transfer", "4-Suit Transfer"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Gambling 3NT"
+match = ["Gambling"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Responding to preempts / weak openings"
+match = ["Responding to Three", "Overcoming Weak", "Overcoming Preempt", "Preempt"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Balancing"
+match = ["Balancing", "Balance"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Overcalls (making & handling)"
+match = ["Overcall", "Handling Overcall"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Slam bidding & judgment"
+match = ["Slam Bidding", "Slam Judgment", "Slam Judgement", "Slam Interest", "Slam Auction", "Slam Try"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Losing trick count"
+match = ["Losing Trick Count", "LTC"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Jump shifts"
+match = ["Jump Shift", "Jump-Shift", "Opener's Jump", "Opener Jump"]
+bidding = 3
+cardplay = 1
+
+[[topic]]
+name = "Advanced forcing sequences"
+match = ["AdvancedForcing", "Advanced Forcing", "Forcing Sequence"]
+bidding = 3
+cardplay = 1
+
+# ============================================================================
+# BOOK 1 §1 "Learn These First" (tier 1) — generic names, matched last
+# ============================================================================
+
+[[topic]]
+name = "Blackwood / Gerber"
+match = ["Blackwood", "Gerber"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Texas transfers"
+match = ["Texas"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Jacoby / transfers"
+match = ["Jacoby Transfer", "Transfer", "Jacoby"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Stayman"
+match = ["Stayman"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Takeout doubles"
+match = ["Takeout", "Take-out", "Take Out"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Weak two-bids"
+match = ["Weak Two", "Weak 2", "Weak2", "WeakTwo"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "2C strong opening"
+match = ["2C Strong", "Strong 2C", "2 Club", "2Club", "TwoClub", "Two Club"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Negative doubles"
+match = ["Negative Double", "Negative"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Reverses"
+match = ["Reverse"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "1NT interference / Lebensohl family"
+match = ["1NT Interference", "1NT Defense", "Competing 1NT", "Interference"]
+bidding = 1
+cardplay = 1
+
+# ============================================================================
+# NOVICE SITUATIONS (tier 0) — natural bidding foundations, matched last
+# ============================================================================
+
+[[topic]]
+name = "Two-over-one game force"
+match = ["2/1", "2O1", "2over1", "2-over-1", "Two Over One", "Two-over-One", "2 Over 1", "Game Forcing"]
+bidding = 2
+cardplay = 1
+
+[[topic]]
+name = "Major-suit raises"
+match = ["Major Suit Raise", "Major Raise", "BasicMajor", "Raising Partner", "Limit Raise", "Major"]
+bidding = 0
+cardplay = 1
+
+[[topic]]
+name = "1NT opener & responses"
+match = ["1NT Opener", "Notrump Opening", "Opening 1NT", "NT Opening", "BasicNotrump", "Notrump", "100NT"]
+bidding = 0
+cardplay = 1
+
+[[topic]]
+name = "Minor-suit bidding"
+match = ["Minor Suit", "Minor"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Opening bids & responses (natural)"
+match = ["Opening Bid", "Opening Hand", "BasicBidding", "Basic Bidding", "Response", "Rebid", "Ranges", "Balanced Opening"]
+bidding = 0
+cardplay = 1
+
+# General competitive-bidding catch-all — LAST, so the specific competitive
+# topics above (overcalls, balancing, negative/support doubles, 1NT defenses,
+# preempts) win; only otherwise-unclassified competitive lessons land here.
+[[topic]]
+name = "Competitive bidding (general)"
+match = ["Competitive Bidding", "Competing"]
+bidding = 2
+cardplay = 1
