@@ -5,6 +5,7 @@
 //! silent guess). `versions` drives cache invalidation when the ladder/probe logic
 //! changes.
 
+use bridge_types::{Direction, Strain};
 use serde::{Deserialize, Serialize};
 
 /// One JSON object per deal, keyed by content hash.
@@ -68,19 +69,80 @@ pub struct Commentary {
 /// Stage 2 — baseline DD (1 full solve/deal). Reserved for slice 2.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Baseline {
-    /// 20-entry DD table, encoded as declarer×denomination trick counts.
-    pub dd_table: serde_json::Value,
-    pub par: String,
-    pub contract_dd_makes: bool,
-    pub slack: i32,
+    /// 20-entry DD table: max tricks per (declarer seat) × (strain).
+    pub dd_table: DdTable,
+    /// Competitive par (score + contracts). DEFERRED — bridge-solver does not
+    /// implement par yet (requires game-theoretic competitive search); `None`
+    /// until it lands, never a guess.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub par: Option<String>,
+    /// Facts about the designated contract, when one is present/inferable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract: Option<ContractFacts>,
 }
 
-/// Stage 3 — cash-out check + ladder assignment. Reserved for slices 2–3.
+/// DD-derived facts for the designated contract in the baseline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContractFacts {
+    /// The effective contract analyzed, e.g. "4H by S".
+    pub contract: String,
+    /// How the contract was obtained (explicit tag vs auction-inferred).
+    pub provenance: ContractProvenance,
+    /// DD tricks declarer takes in the contract strain.
+    pub dd_tricks: u8,
+    /// Tricks required to make (level + 6).
+    pub required: u8,
+    pub dd_makes: bool,
+    /// DD tricks minus required (negative = DD goes down).
+    pub slack: i32,
+    /// Whether the DD result changes if the partner declares the same strain
+    /// (a rough lead-sensitivity signal).
+    pub declarer_seat_sensitive: bool,
+}
+
+/// 20-entry double-dummy table. `tricks[declarer][strain]` in the fixed order
+/// declarer = N,E,S,W and strain = C,D,H,S,NT (bridge-types enum order).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DdTable {
+    pub tricks: [[u8; 5]; 4],
+}
+
+impl DdTable {
+    pub fn get(&self, declarer: Direction, strain: Strain) -> u8 {
+        self.tricks[dir_index(declarer)][strain_index(strain)]
+    }
+}
+
+/// Fixed declarer index: N,E,S,W (bridge-types `Direction` order).
+pub fn dir_index(d: Direction) -> usize {
+    match d {
+        Direction::North => 0,
+        Direction::East => 1,
+        Direction::South => 2,
+        Direction::West => 3,
+    }
+}
+
+/// Fixed strain index: C,D,H,S,NT (bridge-types `Strain` order).
+pub fn strain_index(s: Strain) -> usize {
+    match s {
+        Strain::Clubs => 0,
+        Strain::Diamonds => 1,
+        Strain::Hearts => 2,
+        Strain::Spades => 3,
+        Strain::NoTrump => 4,
+    }
+}
+
+/// Stage 3 — cash-out check + ladder assignment. Present only when a contract
+/// is analyzed. Reserved for extension by slice-3 probes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cardplay {
+    /// Immediate top winners for declarer's side (cash-out heuristic).
     pub immediate_winners: u8,
     pub required: u8,
-    /// 0/1/2 on the v1 ladder; `None` == unclassified (an honest output, not an error).
+    /// v1 ladder level. Slice 2 assigns only `0` (cash-out) or `None`
+    /// (unclassified — pending slice-3 probes); never a wrong level.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub difficulty: Option<u8>,
 }
