@@ -9,10 +9,10 @@ mod dd;
 
 use crate::hash::content_hash;
 use crate::model::{
-    Baseline, Cardplay, ContractFacts, DealRecord, Versions, LADDER_VERSION, TOOL_VERSION,
+    Baseline, Cardplay, ContractFacts, DealRecord, Par, Versions, LADDER_VERSION, TOOL_VERSION,
 };
 use anyhow::{Context, Result};
-use bridge_types::{Board, Deal, Direction};
+use bridge_types::{Board, Deal, Direction, Vulnerability};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -98,7 +98,20 @@ fn analyze(board: &Board) -> (Option<Baseline>, Option<Cardplay>) {
     if !dd::is_complete(&board.deal) {
         return (None, None);
     }
-    let dd_table = dd::solve_dd_table(&board.deal);
+    let (dd_table, bs_table) = dd::solve(&board.deal);
+
+    // Competitive par (reuses the same solved table).
+    let (vul_ns, vul_ew) = match board.vulnerable {
+        Vulnerability::None => (false, false),
+        Vulnerability::NorthSouth => (true, false),
+        Vulnerability::EastWest => (false, true),
+        Vulnerability::Both => (true, true),
+    };
+    let par_res = bridge_solver::par(&bs_table, vul_ns, vul_ew);
+    let par = Some(Par {
+        optimum_score: par_res.optimum_score(),
+        contract: par_res.contract.map(|c| c.describe()),
+    });
 
     let (contract_facts, cardplay) = match contract::effective_contract(board) {
         Some(ec) => {
@@ -138,7 +151,7 @@ fn analyze(board: &Board) -> (Option<Baseline>, Option<Cardplay>) {
 
     let baseline = Baseline {
         dd_table,
-        par: None, // competitive par deferred (bridge-solver has none yet)
+        par,
         contract: contract_facts,
     };
     (Some(baseline), cardplay)

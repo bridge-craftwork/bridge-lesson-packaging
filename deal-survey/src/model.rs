@@ -71,14 +71,23 @@ pub struct Commentary {
 pub struct Baseline {
     /// 20-entry DD table: max tricks per (declarer seat) × (strain).
     pub dd_table: DdTable,
-    /// Competitive par (score + contracts). DEFERRED — bridge-solver does not
-    /// implement par yet (requires game-theoretic competitive search); `None`
-    /// until it lands, never a guess.
+    /// Competitive par (via `bridge_solver::par`), when the deal is complete.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub par: Option<String>,
+    pub par: Option<Par>,
     /// Facts about the designated contract, when one is present/inferable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contract: Option<ContractFacts>,
+}
+
+/// Competitive par for the deal (Bridge-Composer-compatible).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Par {
+    /// Score labeled by the par contract's declaring side, e.g. "NS 980",
+    /// "EW -500", or "0" for a passed-out deal.
+    pub optimum_score: String,
+    /// The par contract, e.g. "NS 6S=" / "EW 4SX-1"; absent when passed out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract: Option<String>,
 }
 
 /// DD-derived facts for the designated contract in the baseline.
