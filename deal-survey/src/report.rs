@@ -151,6 +151,7 @@ fn print_detail(p: &CollectionProfile) {
         }
         println!("    (base b/cp = authored bidding/cardplay baseline; comb = baseline ± observed level, mean)");
     }
+    print_lessons(p);
     if let Some(ed) = &p.editorial {
         println!("  editorial:");
         for (k, v) in [
@@ -164,6 +165,58 @@ fn print_detail(p: &CollectionProfile) {
             }
         }
     }
+}
+
+/// Per-lesson difficulty table, ranked hardest cardplay first.
+fn print_lessons(p: &CollectionProfile) {
+    if p.by_lesson.is_empty() {
+        return;
+    }
+    let mean = |sum: usize, n: usize| if n > 0 { sum as f64 / n as f64 } else { 0.0 };
+    let mut rows: Vec<(&String, &crate::profile::TopicStats)> = p.by_lesson.iter().collect();
+    // Hardest first: combined cardplay, then combined bidding, then deal count.
+    rows.sort_by(|a, b| {
+        mean(b.1.combined_cardplay_sum, b.1.combined_cardplay_n)
+            .partial_cmp(&mean(a.1.combined_cardplay_sum, a.1.combined_cardplay_n))
+            .unwrap()
+            .then(
+                mean(b.1.combined_bidding_sum, b.1.combined_bidding_n)
+                    .partial_cmp(&mean(a.1.combined_bidding_sum, a.1.combined_bidding_n))
+                    .unwrap(),
+            )
+    });
+    println!("  lessons (ranked hardest cardplay first):");
+    println!(
+        "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
+        "lesson", "deals", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid", "topic"
+    );
+    let fmt = |sum: usize, n: usize| {
+        if n > 0 {
+            format!("{:.1}", sum as f64 / n as f64)
+        } else {
+            "  -".to_string()
+        }
+    };
+    for (lesson, t) in rows {
+        println!(
+            "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
+            truncate(&lesson_label(lesson), 34),
+            t.deal_count,
+            t.observed_cardplay[0],
+            t.observed_cardplay[1],
+            t.observed_cardplay[2],
+            t.not_makeable,
+            fmt(t.combined_cardplay_sum, t.combined_cardplay_n),
+            fmt(t.combined_bidding_sum, t.combined_bidding_n),
+            t.topic,
+        );
+    }
+}
+
+/// Readable lesson label: basename without extension.
+fn lesson_label(path: &str) -> String {
+    let base = path.rsplit('/').next().unwrap_or(path);
+    base.strip_suffix(".pbn").unwrap_or(base).to_string()
 }
 
 fn print_dist(label: &str, map: &std::collections::BTreeMap<String, usize>) {

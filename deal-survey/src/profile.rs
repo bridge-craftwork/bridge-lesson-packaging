@@ -28,6 +28,10 @@ pub struct CollectionProfile {
     /// when a topic table was supplied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_topic: Option<BTreeMap<String, TopicStats>>,
+    /// Per-lesson breakdown (keyed by the lesson's `source.file`). Always
+    /// present; the `topic` field is filled when a topic table was supplied.
+    #[serde(default)]
+    pub by_lesson: BTreeMap<String, TopicStats>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editorial: Option<Editorial>,
     pub versions: crate::model::Versions,
@@ -38,6 +42,9 @@ pub struct CollectionProfile {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TopicStats {
     pub deal_count: usize,
+    /// Resolved topic (only used in the per-lesson map; empty in by_topic).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub topic: String,
     pub baseline_bidding: u8,
     pub baseline_cardplay: u8,
     /// Observed cardplay ladder among makeable deals: [L0, L1, L2].
@@ -183,48 +190,23 @@ pub fn build(
     let mut contract_mix = ContractMix::default();
     let mut techniques: BTreeMap<String, usize> = BTreeMap::new();
     let mut by_topic: BTreeMap<String, TopicStats> = BTreeMap::new();
+    let mut by_lesson: BTreeMap<String, TopicStats> = BTreeMap::new();
 
     for rec in &records {
-        // Per-topic breakdown (baseline prior vs observed difficulty).
-        if let Some(t) = topics {
-            let (name, base) = t.resolve(&rec.source.file);
-            let st = by_topic.entry(name).or_default();
-            st.deal_count += 1;
-            st.baseline_bidding = base.bidding;
-            st.baseline_cardplay = base.cardplay;
-            let a = &rec.structural.auction;
-            if a.present {
-                st.with_auction += 1;
-                st.total_bids += a.bids as usize;
-                if a.contested {
-                    st.contested += 1;
-                }
-                // Combined bidding = baseline nudged ±1 by observed auction level.
-                let level = auction_complexity_level(a);
-                let combined = (base.bidding as i32 + level as i32 - 1).max(0);
-                st.combined_bidding_sum += combined as usize;
-                st.combined_bidding_n += 1;
-            }
-            let makes = rec
-                .baseline
-                .as_ref()
-                .and_then(|b| b.contract.as_ref())
-                .map(|c| c.dd_makes)
-                .unwrap_or(false);
-            if !makes {
-                st.not_makeable += 1;
-            } else {
-                match rec.cardplay.as_ref().and_then(|c| c.difficulty) {
-                    Some(level @ 0..=2) => {
-                        st.observed_cardplay[level as usize] += 1;
-                        // Combined = baseline nudged ±1 by the observed ladder.
-                        let combined = (base.cardplay as i32 + level as i32 - 1).max(0);
-                        st.combined_cardplay_sum += combined as usize;
-                        st.combined_cardplay_n += 1;
-                    }
-                    _ => st.observed_unclassified += 1,
-                }
-            }
+        // Resolve the deal's topic + baseline (defaults if no table).
+        let (topic_name, base) = match topics {
+            Some(t) => t.resolve(&rec.source.file),
+            None => ("(none)".to_string(), crate::topics::Baseline::default()),
+        };
+
+        // Per-lesson breakdown (always).
+        let lesson = by_lesson.entry(rec.source.file.clone()).or_default();
+        lesson.topic = topic_name.clone();
+        accumulate(lesson, rec, base);
+
+        // Per-topic breakdown (only with a topic table).
+        if topics.is_some() {
+            accumulate(by_topic.entry(topic_name).or_default(), rec, base);
         }
 
         // Structural coverage.
@@ -304,8 +286,50 @@ pub fn build(
         contract_mix,
         techniques,
         by_topic: topics.map(|_| by_topic),
+        by_lesson,
         editorial,
         versions: crate::model::Versions::current(),
+    }
+}
+
+/// Accumulate one record into a `TopicStats` bucket (shared by the per-topic and
+/// per-lesson breakdowns).
+fn accumulate(st: &mut TopicStats, rec: &DealRecord, base: crate::topics::Baseline) {
+    st.deal_count += 1;
+    st.baseline_bidding = base.bidding;
+    st.baseline_cardplay = base.cardplay;
+
+    let a = &rec.structural.auction;
+    if a.present {
+        st.with_auction += 1;
+        st.total_bids += a.bids as usize;
+        if a.contested {
+            st.contested += 1;
+        }
+        // Combined bidding = baseline nudged ±1 by the observed auction level.
+        let level = auction_complexity_level(a);
+        st.combined_bidding_sum += (base.bidding as i32 + level as i32 - 1).max(0) as usize;
+        st.combined_bidding_n += 1;
+    }
+
+    let makes = rec
+        .baseline
+        .as_ref()
+        .and_then(|b| b.contract.as_ref())
+        .map(|c| c.dd_makes)
+        .unwrap_or(false);
+    if !makes {
+        st.not_makeable += 1;
+    } else {
+        match rec.cardplay.as_ref().and_then(|c| c.difficulty) {
+            Some(level @ 0..=2) => {
+                st.observed_cardplay[level as usize] += 1;
+                // Combined cardplay = baseline nudged ±1 by the observed ladder.
+                st.combined_cardplay_sum += (base.cardplay as i32 + level as i32 - 1).max(0) as usize;
+                st.combined_cardplay_n += 1;
+            }
+            _ => st.observed_unclassified += 1,
+        }
     }
 }
 
