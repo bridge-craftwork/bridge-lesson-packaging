@@ -47,3 +47,7 @@ The same materials are currently produced by several independent build scripts
 (across collections and platforms) that have drifted apart. Consolidating on one contract and
 one parameterized builder keeps every collection's teacher materials consistent and removes
 the maintenance of parallel scripts.
+
+## License
+
+Released into the public domain under [The Unlicense](LICENSE).
