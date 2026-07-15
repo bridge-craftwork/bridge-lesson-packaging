@@ -5,6 +5,7 @@
 //! `profile` rolls records up (stage 5); `report` prints a summary.
 
 mod hash;
+mod html;
 mod model;
 mod profile;
 mod report;
@@ -46,8 +47,14 @@ enum Command {
         #[arg(long)]
         topics: Option<PathBuf>,
     },
-    /// Human-readable summary table over a profile file or directory.
-    Report { profiles: PathBuf },
+    /// Human-readable summary over a profile file or directory.
+    Report {
+        profiles: PathBuf,
+        /// Write a self-contained, colour-coded HTML report to this path
+        /// instead of printing text.
+        #[arg(long)]
+        html: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -83,6 +90,13 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
-        Command::Report { profiles } => report::report(&profiles),
+        Command::Report { profiles, html } => match html {
+            Some(out) => {
+                report::write_html(&profiles, &out)?;
+                eprintln!("deal-survey: wrote HTML report → {}", out.display());
+                Ok(())
+            }
+            None => report::report(&profiles),
+        },
     }
 }

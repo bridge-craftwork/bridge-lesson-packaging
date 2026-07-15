@@ -22,6 +22,18 @@ pub fn report(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Render one or more profiles as a self-contained HTML file.
+pub fn write_html(path: &Path, out: &Path) -> Result<()> {
+    let mut profiles = load(path)?;
+    if profiles.is_empty() {
+        bail!("no profiles found at {}", path.display());
+    }
+    profiles.sort_by(|a, b| a.collection.cmp(&b.collection));
+    std::fs::write(out, crate::html::render(&profiles))
+        .with_context(|| format!("writing {}", out.display()))?;
+    Ok(())
+}
+
 fn load(path: &Path) -> Result<Vec<CollectionProfile>> {
     let mut paths = Vec::new();
     if path.is_dir() {
