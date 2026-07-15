@@ -1,0 +1,29 @@
+[package]
+name = "deal-survey"
+version = "0.1.0"
+edition = "2021"
+license = "Unlicense"
+description = "Lesson-collection characterization tool: structural facts, DD baseline, cardplay difficulty, technique probes."
+repository = "https://github.com/bridge-craftwork/bridge-lesson-packaging"
+publish = false
+
+[dependencies]
+# In-house crates. Committed as *git* deps (CI truth). Local iteration against
+# the sibling checkouts goes through the gitignored .cargo/config.toml [patch]
+# overrides + ./dev-build.sh — never bare cargo. See dev-build.sh header.
+bridge-types = { git = "https://github.com/bridge-craftwork/bridge-types" }
+bridge-encodings = { git = "https://github.com/bridge-craftwork/bridge-encodings" }
+bridge-solver = { git = "https://github.com/bridge-craftwork/bridge-solver" }
+
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+sha2 = "0.10"
+anyhow = "1"
+walkdir = "2"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1

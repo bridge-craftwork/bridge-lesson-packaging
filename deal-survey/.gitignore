@@ -1,0 +1,4 @@
+/target
+# Local dev override + its lock — never committed (see dev-build.sh).
+/.cargo/
+.DS_Store
