@@ -1,0 +1,7 @@
+# Editorial metadata sidecar for `deal-survey profile --editorial <file>`.
+# All fields optional; folded verbatim into the collection profile.
+
+licensing = "Baker Bridge — used by permission"
+intended_audience = "SC Morning / beginner–intermediate"
+commentary_quality = "inline, per-deal teaching notes"
+notes = "Wide bidding-convention coverage; cardplay mostly cash-out / establish."

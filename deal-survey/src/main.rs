@@ -1,11 +1,13 @@
 //! deal-survey — lesson-collection characterization tool.
 //!
 //! See deal-survey-spec.md. Read-only over collections; output deterministic and
-//! diffable. Slice 1 implements `scan` stage 1 (structural); `profile`/`report`
-//! and the DD/probe stages land in later slices.
+//! diffable. `scan` runs stages 1–4 (structural, baseline DD, cash-out, probes);
+//! `profile` rolls records up (stage 5); `report` prints a summary.
 
 mod hash;
 mod model;
+mod profile;
+mod report;
 mod scan;
 
 use anyhow::Result;
@@ -29,13 +31,18 @@ enum Command {
         #[arg(long)]
         out: PathBuf,
     },
-    /// Stage 5: roll per-deal records up into a collection profile. (slice 4)
+    /// Stage 5: roll per-deal records up into a collection profile.
     Profile {
+        /// Directory of per-deal record JSON files (from `scan`).
         records: PathBuf,
+        /// Output directory for the collection profile.
         #[arg(long)]
         out: PathBuf,
+        /// Optional editorial metadata TOML sidecar to fold in.
+        #[arg(long)]
+        editorial: Option<PathBuf>,
     },
-    /// Human-readable summary table over profiles. (slice 4)
+    /// Human-readable summary table over a profile file or directory.
     Report { profiles: PathBuf },
 }
 
@@ -61,11 +68,17 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
-        Command::Profile { .. } => {
-            anyhow::bail!("`profile` is not implemented yet (roadmap slice 4: survey-profile)")
+        Command::Profile { records, out, editorial } => {
+            let p = profile::build_from_dir(&records, editorial.as_deref())?;
+            let path = profile::write(&out, &p)?;
+            eprintln!(
+                "deal-survey: profiled {} deal(s) of '{}' → {}",
+                p.deal_count,
+                p.collection,
+                path.display()
+            );
+            Ok(())
         }
-        Command::Report { .. } => {
-            anyhow::bail!("`report` is not implemented yet (roadmap slice 4: survey-profile)")
-        }
+        Command::Report { profiles } => report::report(&profiles),
     }
 }

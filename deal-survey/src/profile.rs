@@ -1,0 +1,282 @@
+//! Stage 5 — roll-up. Folds the per-deal record ledger into one collection
+//! profile: difficulty histogram, structural coverage, contract mix, technique
+//! matrix, and an optional editorial block from a TOML sidecar.
+//!
+//! Counts only (no fractions) go in the JSON — exact and diffable; the `report`
+//! command derives percentages for humans. All maps are `BTreeMap` so output is
+//! deterministically ordered.
+
+use crate::model::DealRecord;
+use anyhow::{bail, Context, Result};
+use bridge_types::Strain;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::path::Path;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectionProfile {
+    pub collection: String,
+    pub deal_count: usize,
+    pub difficulty: DifficultyHistogram,
+    pub structural: StructuralCoverage,
+    pub contract_mix: ContractMix,
+    /// Probe name → how many deals it fired on.
+    pub techniques: BTreeMap<String, usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editorial: Option<Editorial>,
+    pub versions: crate::model::Versions,
+}
+
+/// Cardplay-difficulty histogram (mutually exclusive buckets over all deals).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DifficultyHistogram {
+    pub cash_out_0: usize,
+    pub establish_1: usize,
+    pub technique_2: usize,
+    pub unclassified: usize,
+    /// Makeable-DD test failed (designated contract goes down double-dummy).
+    pub not_makeable: usize,
+    /// No contract could be resolved (no tag, no auction).
+    pub no_contract: usize,
+    /// Deal incomplete (not 52 cards) — no baseline.
+    pub incomplete: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StructuralCoverage {
+    pub with_auction: usize,
+    pub with_play: usize,
+    pub with_commentary: usize,
+    pub with_explicit_contract: usize,
+    /// Custom (collection-specific) tag → number of deals carrying it.
+    pub custom_tags: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ContractMix {
+    pub by_strain: BTreeMap<String, usize>,
+    pub by_level: BTreeMap<String, usize>,
+    pub by_declarer: BTreeMap<String, usize>,
+}
+
+/// Manually-supplied editorial metadata (TOML sidecar). All fields optional.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Editorial {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub licensing: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intended_audience: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commentary_quality: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+/// Build a profile from a directory of per-deal record JSON files.
+pub fn build_from_dir(records_dir: &Path, editorial: Option<&Path>) -> Result<CollectionProfile> {
+    let mut records = Vec::new();
+    let mut entries: Vec<_> = std::fs::read_dir(records_dir)
+        .with_context(|| format!("reading records dir {}", records_dir.display()))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "json").unwrap_or(false))
+        .collect();
+    entries.sort();
+    for path in entries {
+        let txt = std::fs::read_to_string(&path)
+            .with_context(|| format!("reading {}", path.display()))?;
+        let rec: DealRecord = serde_json::from_str(&txt)
+            .with_context(|| format!("parsing {}", path.display()))?;
+        records.push(rec);
+    }
+    if records.is_empty() {
+        bail!("no records found in {}", records_dir.display());
+    }
+
+    let editorial = match editorial {
+        Some(p) => Some(load_editorial(p)?),
+        None => None,
+    };
+    Ok(build(records, editorial))
+}
+
+/// Load an editorial TOML sidecar.
+pub fn load_editorial(path: &Path) -> Result<Editorial> {
+    let txt =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    toml::from_str(&txt).with_context(|| format!("parsing editorial TOML {}", path.display()))
+}
+
+/// Fold records into a profile.
+pub fn build(records: Vec<DealRecord>, editorial: Option<Editorial>) -> CollectionProfile {
+    let collection = records
+        .iter()
+        .map(|r| r.source.collection.clone())
+        .next()
+        .unwrap_or_default();
+
+    let mut difficulty = DifficultyHistogram::default();
+    let mut structural = StructuralCoverage::default();
+    let mut contract_mix = ContractMix::default();
+    let mut techniques: BTreeMap<String, usize> = BTreeMap::new();
+
+    for rec in &records {
+        // Structural coverage.
+        let s = &rec.structural;
+        if s.auction {
+            structural.with_auction += 1;
+        }
+        if s.play {
+            structural.with_play += 1;
+        }
+        if s.commentary.present {
+            structural.with_commentary += 1;
+        }
+        if matches!(s.contract_provenance, crate::model::ContractProvenance::Explicit) {
+            structural.with_explicit_contract += 1;
+        }
+        for tag in &s.custom_tags {
+            *structural.custom_tags.entry(tag.clone()).or_default() += 1;
+        }
+
+        // Difficulty histogram + contract mix.
+        match rec.baseline.as_ref() {
+            None => difficulty.incomplete += 1,
+            Some(b) => match b.contract.as_ref() {
+                None => difficulty.no_contract += 1,
+                Some(facts) => {
+                    if let Some((level, strain, declarer)) = parse_contract(&facts.contract) {
+                        *contract_mix.by_strain.entry(strain).or_default() += 1;
+                        *contract_mix.by_level.entry(level.to_string()).or_default() += 1;
+                        *contract_mix.by_declarer.entry(declarer.to_string()).or_default() += 1;
+                    }
+                    if !facts.dd_makes {
+                        difficulty.not_makeable += 1;
+                    } else {
+                        match rec.cardplay.as_ref().and_then(|c| c.difficulty) {
+                            Some(0) => difficulty.cash_out_0 += 1,
+                            Some(1) => difficulty.establish_1 += 1,
+                            Some(2) => difficulty.technique_2 += 1,
+                            _ => difficulty.unclassified += 1,
+                        }
+                    }
+                }
+            },
+        }
+
+        // Technique matrix.
+        for probe in &rec.probes {
+            if probe.fired {
+                *techniques.entry(probe.name.clone()).or_default() += 1;
+            }
+        }
+    }
+
+    CollectionProfile {
+        collection,
+        deal_count: records.len(),
+        difficulty,
+        structural,
+        contract_mix,
+        techniques,
+        editorial,
+        versions: crate::model::Versions::current(),
+    }
+}
+
+/// Parse a contract display "4H by S" → (level, strain label, declarer char).
+fn parse_contract(display: &str) -> Option<(u8, String, char)> {
+    let (contract, decl) = display.split_once(" by ")?;
+    let parsed = bridge_types::Contract::parse(contract)?;
+    Some((parsed.level, strain_label(parsed.strain), decl.chars().next()?))
+}
+
+fn strain_label(s: Strain) -> String {
+    match s {
+        Strain::Clubs => "C",
+        Strain::Diamonds => "D",
+        Strain::Hearts => "H",
+        Strain::Spades => "S",
+        Strain::NoTrump => "NT",
+    }
+    .to_string()
+}
+
+/// Write a profile as `<out_dir>/<collection>.json`.
+pub fn write(out_dir: &Path, profile: &CollectionProfile) -> Result<std::path::PathBuf> {
+    std::fs::create_dir_all(out_dir)
+        .with_context(|| format!("creating {}", out_dir.display()))?;
+    let name = sanitize(&profile.collection);
+    let path = out_dir.join(format!("{name}.json"));
+    let json = serde_json::to_string_pretty(profile)?;
+    std::fs::write(&path, format!("{json}\n"))
+        .with_context(|| format!("writing {}", path.display()))?;
+    Ok(path)
+}
+
+fn sanitize(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::*;
+
+    fn rec(difficulty: Option<u8>, dd_makes: bool, fired: &[&str], contract: &str) -> DealRecord {
+        DealRecord {
+            hash: "h".into(),
+            source: Source { collection: "Test".into(), file: "f.pbn".into(), board: Some(1) },
+            structural: Structural {
+                contract: Some(contract.split_whitespace().next().unwrap().to_string()),
+                contract_provenance: ContractProvenance::Explicit,
+                auction: true,
+                play: false,
+                commentary: Commentary { present: true, style: Some("inline".into()) },
+                custom_tags: vec!["SkillPath".into()],
+            },
+            baseline: Some(Baseline {
+                dd_table: DdTable { tricks: [[0; 5]; 4] },
+                par: None,
+                contract: Some(ContractFacts {
+                    contract: contract.into(),
+                    provenance: ContractProvenance::Explicit,
+                    dd_tricks: if dd_makes { 10 } else { 8 },
+                    required: 10,
+                    dd_makes,
+                    slack: 0,
+                    declarer_seat_sensitive: false,
+                }),
+            }),
+            cardplay: Some(Cardplay { immediate_winners: 5, required: 10, difficulty }),
+            probes: fired
+                .iter()
+                .map(|n| ProbeRecord { name: n.to_string(), fired: true, evidence: serde_json::json!({}) })
+                .collect(),
+            versions: Versions::current(),
+        }
+    }
+
+    #[test]
+    fn aggregates_histogram_mix_and_techniques() {
+        let p = build(
+            vec![
+                rec(Some(0), true, &[], "3NT by N"),
+                rec(Some(2), true, &["finesse"], "4H by S"),
+                rec(None, false, &[], "6S by S"), // not makeable
+            ],
+            None,
+        );
+        assert_eq!(p.deal_count, 3);
+        assert_eq!(p.difficulty.cash_out_0, 1);
+        assert_eq!(p.difficulty.technique_2, 1);
+        assert_eq!(p.difficulty.not_makeable, 1);
+        assert_eq!(p.techniques.get("finesse"), Some(&1));
+        assert_eq!(p.structural.with_auction, 3);
+        assert_eq!(p.contract_mix.by_strain.get("NT"), Some(&1));
+        assert_eq!(p.contract_mix.by_strain.get("H"), Some(&1));
+        assert_eq!(p.contract_mix.by_declarer.get("S"), Some(&2));
+    }
+}
