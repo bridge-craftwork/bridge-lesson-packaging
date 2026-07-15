@@ -9,6 +9,7 @@ mod model;
 mod profile;
 mod report;
 mod scan;
+mod topics;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -41,6 +42,9 @@ enum Command {
         /// Optional editorial metadata TOML sidecar to fold in.
         #[arg(long)]
         editorial: Option<PathBuf>,
+        /// Optional topic-baseline TOML for a per-topic difficulty breakdown.
+        #[arg(long)]
+        topics: Option<PathBuf>,
     },
     /// Human-readable summary table over a profile file or directory.
     Report { profiles: PathBuf },
@@ -68,8 +72,8 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
-        Command::Profile { records, out, editorial } => {
-            let p = profile::build_from_dir(&records, editorial.as_deref())?;
+        Command::Profile { records, out, editorial, topics } => {
+            let p = profile::build_from_dir(&records, editorial.as_deref(), topics.as_deref())?;
             let path = profile::write(&out, &p)?;
             eprintln!(
                 "deal-survey: profiled {} deal(s) of '{}' → {}",

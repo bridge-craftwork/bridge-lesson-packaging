@@ -121,6 +121,36 @@ fn print_detail(p: &CollectionProfile) {
     if !p.techniques.is_empty() {
         print_dist("  fired  ", &p.techniques);
     }
+    if let Some(topics) = &p.by_topic {
+        println!("  topics (baseline prior vs observed cardplay):");
+        println!(
+            "    {:<28} {:>5} {:>9} | {:>4} {:>4} {:>4} {:>5} | {:>8}",
+            "topic", "deals", "base b/cp", "L0", "L1", "L2", "n-mk", "combined"
+        );
+        for (name, t) in topics {
+            let combined = if t.combined_cardplay_n > 0 {
+                format!(
+                    "{:.1}",
+                    t.combined_cardplay_sum as f64 / t.combined_cardplay_n as f64
+                )
+            } else {
+                "  -".to_string()
+            };
+            println!(
+                "    {:<28} {:>5} {:>4}/{:<4} | {:>4} {:>4} {:>4} {:>5} | {:>8}",
+                truncate(name, 28),
+                t.deal_count,
+                t.baseline_bidding,
+                t.baseline_cardplay,
+                t.observed_cardplay[0],
+                t.observed_cardplay[1],
+                t.observed_cardplay[2],
+                t.not_makeable,
+                combined,
+            );
+        }
+        println!("    (base b/cp = authored bidding/cardplay baseline; combined = baseline ± observed ladder, mean over makeable)");
+    }
     if let Some(ed) = &p.editorial {
         println!("  editorial:");
         for (k, v) in [

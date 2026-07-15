@@ -7,6 +7,7 @@
 //! deterministically ordered.
 
 use crate::model::DealRecord;
+use crate::topics::Topics;
 use anyhow::{bail, Context, Result};
 use bridge_types::Strain;
 use serde::{Deserialize, Serialize};
@@ -23,9 +24,35 @@ pub struct CollectionProfile {
     pub contract_mix: ContractMix,
     /// Probe name → how many deals it fired on.
     pub techniques: BTreeMap<String, usize>,
+    /// Per-topic breakdown (baseline prior vs observed difficulty). Present only
+    /// when a topic table was supplied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by_topic: Option<BTreeMap<String, TopicStats>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editorial: Option<Editorial>,
     pub versions: crate::model::Versions,
+}
+
+/// Difficulty per topic: the authored baseline prior alongside the observed,
+/// objective difficulty — so the baselines can be calibrated against reality.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TopicStats {
+    pub deal_count: usize,
+    pub baseline_bidding: u8,
+    pub baseline_cardplay: u8,
+    /// Observed cardplay ladder among makeable deals: [L0, L1, L2].
+    pub observed_cardplay: [usize; 3],
+    pub observed_unclassified: usize,
+    pub not_makeable: usize,
+    /// Auction proxies observed within the topic.
+    pub with_auction: usize,
+    pub total_bids: usize,
+    pub contested: usize,
+    /// Combined cardplay difficulty = max(0, baseline + (observed_level - 1)),
+    /// summed over makeable deals; `report` derives the mean. This is the DRAFT
+    /// combination — baseline sets the floor, the observed ladder nudges ±1.
+    pub combined_cardplay_sum: usize,
+    pub combined_cardplay_n: usize,
 }
 
 /// Cardplay-difficulty histogram (mutually exclusive buckets over all deals).
@@ -88,7 +115,11 @@ pub struct Editorial {
 }
 
 /// Build a profile from a directory of per-deal record JSON files.
-pub fn build_from_dir(records_dir: &Path, editorial: Option<&Path>) -> Result<CollectionProfile> {
+pub fn build_from_dir(
+    records_dir: &Path,
+    editorial: Option<&Path>,
+    topics: Option<&Path>,
+) -> Result<CollectionProfile> {
     let mut records = Vec::new();
     let mut entries: Vec<_> = std::fs::read_dir(records_dir)
         .with_context(|| format!("reading records dir {}", records_dir.display()))?
@@ -112,7 +143,11 @@ pub fn build_from_dir(records_dir: &Path, editorial: Option<&Path>) -> Result<Co
         Some(p) => Some(load_editorial(p)?),
         None => None,
     };
-    Ok(build(records, editorial))
+    let topics = match topics {
+        Some(p) => Some(Topics::load(p)?),
+        None => None,
+    };
+    Ok(build(records, editorial, topics.as_ref()))
 }
 
 /// Load an editorial TOML sidecar.
@@ -122,8 +157,13 @@ pub fn load_editorial(path: &Path) -> Result<Editorial> {
     toml::from_str(&txt).with_context(|| format!("parsing editorial TOML {}", path.display()))
 }
 
-/// Fold records into a profile.
-pub fn build(records: Vec<DealRecord>, editorial: Option<Editorial>) -> CollectionProfile {
+/// Fold records into a profile. With a topic table, also produce the per-topic
+/// baseline-vs-observed breakdown.
+pub fn build(
+    records: Vec<DealRecord>,
+    editorial: Option<Editorial>,
+    topics: Option<&Topics>,
+) -> CollectionProfile {
     let collection = records
         .iter()
         .map(|r| r.source.collection.clone())
@@ -135,8 +175,46 @@ pub fn build(records: Vec<DealRecord>, editorial: Option<Editorial>) -> Collecti
     let mut auction = AuctionProfile::default();
     let mut contract_mix = ContractMix::default();
     let mut techniques: BTreeMap<String, usize> = BTreeMap::new();
+    let mut by_topic: BTreeMap<String, TopicStats> = BTreeMap::new();
 
     for rec in &records {
+        // Per-topic breakdown (baseline prior vs observed difficulty).
+        if let Some(t) = topics {
+            let (name, base) = t.resolve(&rec.source.file);
+            let st = by_topic.entry(name).or_default();
+            st.deal_count += 1;
+            st.baseline_bidding = base.bidding;
+            st.baseline_cardplay = base.cardplay;
+            let a = &rec.structural.auction;
+            if a.present {
+                st.with_auction += 1;
+                st.total_bids += a.bids as usize;
+                if a.contested {
+                    st.contested += 1;
+                }
+            }
+            let makes = rec
+                .baseline
+                .as_ref()
+                .and_then(|b| b.contract.as_ref())
+                .map(|c| c.dd_makes)
+                .unwrap_or(false);
+            if !makes {
+                st.not_makeable += 1;
+            } else {
+                match rec.cardplay.as_ref().and_then(|c| c.difficulty) {
+                    Some(level @ 0..=2) => {
+                        st.observed_cardplay[level as usize] += 1;
+                        // Combined = baseline nudged ±1 by the observed ladder.
+                        let combined = (base.cardplay as i32 + level as i32 - 1).max(0);
+                        st.combined_cardplay_sum += combined as usize;
+                        st.combined_cardplay_n += 1;
+                    }
+                    _ => st.observed_unclassified += 1,
+                }
+            }
+        }
+
         // Structural coverage.
         let s = &rec.structural;
         let a = &s.auction;
@@ -213,6 +291,7 @@ pub fn build(records: Vec<DealRecord>, editorial: Option<Editorial>) -> Collecti
         auction,
         contract_mix,
         techniques,
+        by_topic: topics.map(|_| by_topic),
         editorial,
         versions: crate::model::Versions::current(),
     }
@@ -308,6 +387,7 @@ mod tests {
                 rec(Some(2), true, &["finesse"], "4H by S"),
                 rec(None, false, &[], "6S by S"), // not makeable
             ],
+            None,
             None,
         );
         assert_eq!(p.deal_count, 3);
