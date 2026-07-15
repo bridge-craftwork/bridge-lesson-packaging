@@ -1,0 +1,37 @@
+# Example collection configs for the face-to-face packaging toolset.
+# The toolset reads one of these per collection. Nothing here identifies a specific
+# collection, repo, source, or license — those are the collection's own concern.
+
+# ---------------------------------------------------------------------------
+# Profile A — a LARGE-lesson collection (many boards per lesson).
+# Lessons routinely exceed the set size, so they slice into multiple sets.
+# ---------------------------------------------------------------------------
+[large_lessons]
+namePrefix        = "My Collection "     # -> "My Collection {Lesson} Set 1 (5 hands) ..."
+categoryNumbering = true                  # "1. Basic Bidding", "2. Conventions", ...
+setSizes          = [4, 5, 6]             # emit 4-, 5-, and 6-board set variants
+tables            = ["FullTable", "NorthSouth", "South"]
+replicateTables   = 9                     # block-replicate each set across 9 tables (KxT)
+companionDocs     = ["*_Intro.pdf"]       # optional per-lesson companion(s)
+mergeComponents   = true                  # Components/ + one merged Handouts per view
+declarerPlan      = ["2up"]
+lin               = false
+studentSeat       = "S"
+
+# ---------------------------------------------------------------------------
+# Profile B — a SMALL-lesson collection (few boards per lesson).
+# Every lesson is <= the set size, so each is a single unsliced set; the same
+# slicing rule simply never fires. Uses richer companion docs and a projection
+# (1-up) declarer's plan.
+# ---------------------------------------------------------------------------
+[small_lessons]
+namePrefix        = ""                     # no prefix
+categoryNumbering = false
+setSizes          = [6]                    # nothing to slice when lessons are <= 6
+tables            = ["FullTable", "NorthSouth", "South"]
+replicateTables   = 9
+companionDocs     = ["*lesson plan.pdf", "*exercises*.pdf"]   # a SET of companions
+mergeComponents   = true
+declarerPlan      = ["2up", "1up"]         # 2-up handout + 1-up for iPad projection
+lin               = false
+studentSeat       = "S"

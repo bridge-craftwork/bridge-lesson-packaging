@@ -1,0 +1,49 @@
+# bridge-lesson-packaging
+
+A shared, **collection-agnostic** toolset for packaging bridge lesson deals into
+**face-to-face teaching materials** — the rotated hand diagrams, block-replicated dealer
+files, bidding sheets, dealer summaries, declarer's plans, and merged handouts used in live
+classes.
+
+Independent lesson collections (each with its own deals, taxonomy, provenance, and — where
+applicable — its own content build) call this one toolset instead of maintaining separate,
+drifting packaging scripts. The toolset knows nothing about any particular collection; a
+collection supplies its deals and a small config, and gets the standard output.
+
+## What it is / isn't
+
+- **Is:** slicing lessons into board sets, rotating to Full Table / North-South / South views,
+  block-replicating for multi-table play, rendering PDFs, and merging handouts — from PBN
+  input, per `CONTRACT.md`.
+- **Isn't:** deal authoring, hand generation/validation/repair, or any app/interactive
+  product. Those stay in the collection that owns them.
+
+## How a collection uses it
+
+1. Arrange practice-deal PBNs by `category / lesson` (plus any optional per-lesson companion
+   PDFs).
+2. Provide a config (see `collection.example.toml`) — name prefix, set size(s), table views,
+   replication, companion-doc globs, etc.
+3. Run the packager over the collection's deals to produce the standard face-to-face tree.
+
+See **`CONTRACT.md`** for the full output structure, the per-lesson auto-slicing rule, the
+artifact list, and the optional `[SkillPath]` metadata pass-through.
+
+## Requirements
+
+- [`bridge-wrangler`](https://github.com/bridge-craftwork/bridge-wrangler) — PBN rotation,
+  block-replication, PBN→PDF.
+- [`pdf-handouts`](https://github.com/bridge-craftwork/pdf-handouts) — PDF merge, headers/footers.
+
+## Status
+
+v1: the contract (`CONTRACT.md`) and config schema are defined. The consolidated builder
+(replacing the per-collection scripts) is being ported here from the existing collection
+build scripts, which already use the same two tools.
+
+## Why
+
+The same face-to-face product is currently produced by several independent build scripts
+(across collections and platforms) that have drifted apart. Consolidating on one contract and
+one parameterized builder keeps every collection's teacher materials consistent and removes
+the maintenance of parallel scripts.
