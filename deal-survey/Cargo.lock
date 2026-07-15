@@ -70,6 +70,7 @@ dependencies = [
 [[package]]
 name = "bridge-encodings"
 version = "0.1.0"
+source = "git+https://github.com/bridge-craftwork/bridge-encodings#506e1ec7b8b176582b67f2c84eb3efa6f4345225"
 dependencies = [
  "bridge-types",
  "thiserror",
@@ -78,6 +79,7 @@ dependencies = [
 [[package]]
 name = "bridge-solver"
 version = "0.4.0"
+source = "git+https://github.com/bridge-craftwork/bridge-solver#db9d2903c8ec75933cddd111f60eb56831794d90"
 dependencies = [
  "bridge-types",
 ]
@@ -85,6 +87,7 @@ dependencies = [
 [[package]]
 name = "bridge-types"
 version = "0.1.0"
+source = "git+https://github.com/bridge-craftwork/bridge-types#bc8c5a171eef03f5cee846cdf226ac34a2008206"
 
 [[package]]
 name = "cfg-if"
@@ -94,9 +97,9 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "clap"
-version = "4.6.1"
+version = "4.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ddb117e43bbf7dacf0a4190fef4d345b9bad68dfc649cb349e7d17d28428e51"
+checksum = "dd059f9da4f5c36b3787f65d38ccaab1cc315f07b01f89abc8359ee6a8205011"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -104,9 +107,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.6.0"
+version = "4.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714a53001bf66416adb0e2ef5ac857140e7dc3a0c48fb28b2f10762fc4b5069f"
+checksum = "f09628afdcc538b57f3c6341e9c8e9970f18e4a481690a64974d7023bd33548b"
 dependencies = [
  "anstream",
  "anstyle",
