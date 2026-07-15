@@ -50,18 +50,14 @@ fn main() -> Result<()> {
                 collection_dir.display(),
                 out.display()
             );
+            let makeable = s.difficulty.iter().sum::<usize>() + s.unclassified;
             eprintln!(
-                "  {} written, {} cached | {} baselined, {} with contract | difficulty 0 (cash-out): {} ({:.0}% of contracts)",
-                s.written,
-                s.cached,
-                s.baselined,
-                s.with_contract,
-                s.difficulty0,
-                if s.with_contract > 0 {
-                    100.0 * s.difficulty0 as f64 / s.with_contract as f64
-                } else {
-                    0.0
-                },
+                "  {} written, {} cached | {} baselined, {} with contract",
+                s.written, s.cached, s.baselined, s.with_contract,
+            );
+            eprintln!(
+                "  cardplay difficulty (of {makeable} makeable): 0 cash-out={}  1 establish={}  2 technique={}  unclassified={}",
+                s.difficulty[0], s.difficulty[1], s.difficulty[2], s.unclassified,
             );
             Ok(())
         }

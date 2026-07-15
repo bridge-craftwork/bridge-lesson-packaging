@@ -6,10 +6,12 @@ pub mod structural;
 mod cardplay;
 mod contract;
 mod dd;
+mod probe;
 
 use crate::hash::content_hash;
 use crate::model::{
-    Baseline, Cardplay, ContractFacts, DealRecord, Par, Versions, LADDER_VERSION, TOOL_VERSION,
+    Baseline, Cardplay, ContractFacts, DealRecord, Par, ProbeRecord, Versions, LADDER_VERSION,
+    TOOL_VERSION,
 };
 use anyhow::{Context, Result};
 use bridge_types::{Board, Deal, Direction, Vulnerability};
@@ -26,8 +28,10 @@ pub struct ScanSummary {
     pub baselined: usize,
     /// Records with an analyzed contract (explicit or inferred).
     pub with_contract: usize,
-    /// Cardplay difficulty 0 (cash-out) among analyzed contracts.
-    pub difficulty0: usize,
+    /// Cardplay difficulty histogram among makeable contracts: [d0, d1, d2].
+    pub difficulty: [usize; 3],
+    /// Makeable contracts left unclassified (ambiguous / multiple probes fire).
+    pub unclassified: usize,
 }
 
 /// Run the scan pipeline over a collection directory, writing one JSON record
@@ -74,14 +78,14 @@ pub fn scan_collection(collection_dir: &Path, out_dir: &Path) -> Result<ScanSumm
                 }
             }
 
-            let (baseline, cardplay) = analyze(board);
+            let (baseline, cardplay, probes) = analyze(board);
             let record = DealRecord {
                 hash,
                 source: structural::source_for(&collection, &rel, board.number),
                 structural: structural::structural_of(board),
                 baseline,
                 cardplay,
-                probes: Vec::new(),
+                probes,
                 versions: Versions::current(),
             };
             write_record(out_dir, &record)?;
@@ -93,10 +97,10 @@ pub fn scan_collection(collection_dir: &Path, out_dir: &Path) -> Result<ScanSumm
 }
 
 /// Stage 2 + 3 for one board. Baseline is present for any complete deal;
-/// contract facts and cardplay only when a contract is resolvable.
-fn analyze(board: &Board) -> (Option<Baseline>, Option<Cardplay>) {
+/// contract facts, cardplay, and probes only when a contract is resolvable.
+fn analyze(board: &Board) -> (Option<Baseline>, Option<Cardplay>, Vec<ProbeRecord>) {
     if !dd::is_complete(&board.deal) {
-        return (None, None);
+        return (None, None, Vec::new());
     }
     let (dd_table, bs_table) = dd::solve(&board.deal);
 
@@ -113,14 +117,14 @@ fn analyze(board: &Board) -> (Option<Baseline>, Option<Cardplay>) {
         contract: par_res.contract.map(|c| c.describe()),
     });
 
-    let (contract_facts, cardplay) = match contract::effective_contract(board) {
+    let (contract_facts, cardplay, probes) = match contract::effective_contract(board) {
         Some(ec) => {
             let dd_tricks = dd_table.get(ec.declarer, ec.strain);
             let required = ec.level + 6;
             let dd_makes = dd_tricks >= required;
             let partner = partner_of(ec.declarer);
             let facts = ContractFacts {
-                contract: ec.display,
+                contract: ec.display.clone(),
                 provenance: ec.provenance,
                 dd_tricks,
                 required,
@@ -133,20 +137,33 @@ fn analyze(board: &Board) -> (Option<Baseline>, Option<Cardplay>) {
                 board.deal.hand(ec.declarer),
                 board.deal.hand(partner),
             );
-            // Slice 2 classifies only level 0; the rest awaits slice-3 probes.
-            let difficulty = if dd_makes && winners >= required {
-                Some(0)
+            // Ladder: 0 = cash-out; else probe. Probes only run on makeable,
+            // non-cash-out contracts (per spec, gated on the baseline).
+            let cashout = dd_makes && winners >= required;
+            let (difficulty, probes) = if !dd_makes {
+                (None, Vec::new()) // down DD — making difficulty is moot
+            } else if cashout {
+                (Some(0), Vec::new())
             } else {
-                None
+                let recs = probe::run_probes(&board.deal, &ec, required, dd_tricks);
+                let fired = recs.iter().filter(|r| r.fired).count();
+                // 0 fired → establish/drive-out (1); exactly 1 → single technique
+                // (2); 2+ → unclassified (ambiguous), never a wrong level.
+                let diff = match fired {
+                    0 => Some(1),
+                    1 => Some(2),
+                    _ => None,
+                };
+                (diff, recs)
             };
             let cp = Cardplay {
                 immediate_winners: winners,
                 required,
                 difficulty,
             };
-            (Some(facts), Some(cp))
+            (Some(facts), Some(cp), probes)
         }
-        None => (None, None),
+        None => (None, None, Vec::new()),
     };
 
     let baseline = Baseline {
@@ -154,7 +171,7 @@ fn analyze(board: &Board) -> (Option<Baseline>, Option<Cardplay>) {
         par,
         contract: contract_facts,
     };
-    (Some(baseline), cardplay)
+    (Some(baseline), cardplay, probes)
 }
 
 fn partner_of(d: Direction) -> Direction {
@@ -166,15 +183,71 @@ fn partner_of(d: Direction) -> Direction {
     }
 }
 
+#[cfg(test)]
+mod calibration {
+    use super::analyze;
+
+    /// The checked-in calibration set: hand-labeled deals spanning levels 0–2
+    /// (ground truth = Baker lesson intent + DD-verified probe evidence).
+    const PBN: &str = include_str!("../../calibration/calibration.pbn");
+
+    /// Acceptance (spec): probe verdicts match the labels on ≥90% of the set,
+    /// with NO silent misclassification — a disagreement must land in
+    /// `unclassified` (None), never at a different definite level.
+    #[test]
+    fn ladder_matches_calibration_labels() {
+        let boards = bridge_encodings::pbn::read_pbn(PBN).expect("calibration parses");
+        assert!(boards.len() >= 12, "calibration set too small");
+
+        let mut matched = 0;
+        let mut wrong = Vec::new();
+        for board in &boards {
+            let expected: u8 = board
+                .extra_tag("ExpectedDifficulty")
+                .and_then(|v| v.parse().ok())
+                .expect("every calibration deal labels ExpectedDifficulty");
+            let technique = board.extra_tag("ExpectedTechnique").unwrap_or("");
+            let got = analyze(board).1.and_then(|c| c.difficulty);
+
+            match got {
+                Some(d) if d == expected => matched += 1,
+                Some(d) => wrong.push(format!(
+                    "board {:?} ({technique}): expected {expected}, got {d}",
+                    board.board_id
+                )),
+                None => {} // unclassified — allowed disagreement, not a wrong level
+            }
+        }
+
+        assert!(
+            wrong.is_empty(),
+            "silent misclassification(s) — forbidden:\n{}",
+            wrong.join("\n")
+        );
+        let frac = matched as f64 / boards.len() as f64;
+        assert!(
+            frac >= 0.90,
+            "calibration match {matched}/{} = {:.0}% < 90%",
+            boards.len(),
+            frac * 100.0
+        );
+    }
+}
+
 fn tally(sum: &mut ScanSummary, rec: &DealRecord) {
     if rec.baseline.is_some() {
         sum.baselined += 1;
     }
-    if rec.baseline.as_ref().and_then(|b| b.contract.as_ref()).is_some() {
+    let facts = rec.baseline.as_ref().and_then(|b| b.contract.as_ref());
+    if facts.is_some() {
         sum.with_contract += 1;
     }
-    if rec.cardplay.as_ref().and_then(|c| c.difficulty) == Some(0) {
-        sum.difficulty0 += 1;
+    // Difficulty histogram covers makeable contracts only.
+    if facts.map(|f| f.dd_makes).unwrap_or(false) {
+        match rec.cardplay.as_ref().and_then(|c| c.difficulty) {
+            Some(d @ 0..=2) => sum.difficulty[d as usize] += 1,
+            _ => sum.unclassified += 1,
+        }
     }
 }
 

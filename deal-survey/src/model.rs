@@ -173,7 +173,8 @@ pub struct Versions {
 /// Tool version stamped into every record.
 pub const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Difficulty-ladder version — bump when ladder/probe logic changes (cache key).
-pub const LADDER_VERSION: u32 = 1;
+/// v2: slice-3 probes (finesse/ruff) assign ladder levels 1 and 2.
+pub const LADDER_VERSION: u32 = 2;
 
 impl Versions {
     pub fn current() -> Self {
