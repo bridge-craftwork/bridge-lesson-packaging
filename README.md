@@ -1,9 +1,9 @@
 # bridge-lesson-packaging
 
-A shared, **collection-agnostic** toolset for packaging bridge lesson deals into
-**face-to-face teaching materials** — the rotated hand diagrams, block-replicated dealer
-files, bidding sheets, dealer summaries, declarer's plans, and merged handouts used in live
-classes.
+A shared, **collection-agnostic** toolset for packaging bridge lesson deals into **mixed-use
+teaching materials** — for both **in-person** classes (the Full Table view: dealer files,
+bidding sheets, dealer summaries, declarer's plans) and **online** lessons (the North-South
+and South views, for platforms such as Shark Bridge).
 
 Independent lesson collections (each with its own deals, taxonomy, provenance, and — where
 applicable — its own content build) call this one toolset instead of maintaining separate,
@@ -24,7 +24,7 @@ collection supplies its deals and a small config, and gets the standard output.
    PDFs).
 2. Provide a config (see `collection.example.toml`) — name prefix, set size(s), table views,
    replication, companion-doc globs, etc.
-3. Run the packager over the collection's deals to produce the standard face-to-face tree.
+3. Run the packager over the collection's deals to produce the standard mixed-use materials tree.
 
 See **`CONTRACT.md`** for the full output structure, the per-lesson auto-slicing rule, the
 artifact list, and the optional `[SkillPath]` metadata pass-through.
@@ -43,7 +43,7 @@ build scripts, which already use the same two tools.
 
 ## Why
 
-The same face-to-face product is currently produced by several independent build scripts
+The same materials are currently produced by several independent build scripts
 (across collections and platforms) that have drifted apart. Consolidating on one contract and
 one parameterized builder keeps every collection's teacher materials consistent and removes
 the maintenance of parallel scripts.

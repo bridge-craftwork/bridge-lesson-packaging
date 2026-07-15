@@ -1,4 +1,4 @@
-# Example collection configs for the face-to-face packaging toolset.
+# Example collection configs for the lesson-materials packaging toolset.
 # The toolset reads one of these per collection. Nothing here identifies a specific
 # collection, repo, source, or license — those are the collection's own concern.
 

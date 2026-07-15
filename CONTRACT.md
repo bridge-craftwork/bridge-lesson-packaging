@@ -1,9 +1,18 @@
-# Face-to-face lesson packaging contract (v1)
+# Lesson materials packaging contract (v1)
 
-This defines the **standard structure and artifacts** for the face-to-face teaching materials
-a bridge lesson collection produces — the physical handouts, dealer files, and bidding sheets
-used in live classes — and the **configuration a collection supplies** to the shared packaging
-toolset.
+This defines the **standard structure and artifacts** for the teaching materials a bridge
+lesson collection produces, and the **configuration a collection supplies** to the shared
+packaging toolset.
+
+The materials are **mixed-use** — packaged for two delivery modes:
+
+- **In-person (at the table):** the **Full Table** view — all four hands, physically dealt —
+  plus its dealer files, bidding sheets, dealer summaries, and declarer's plans.
+- **Online:** the **North-South** and **South** views — reduced-seat files for online play
+  platforms (e.g. Shark Bridge), where a student sees only their own seat(s).
+
+A collection chooses which views to emit, so a collection can target in-person only, online
+only, or both.
 
 The toolset is **collection-agnostic**: it knows nothing about any particular collection. A
 collection supplies (a) its deals as PBN files organized by a taxonomy, and (b) a config; the
@@ -80,11 +89,13 @@ For a lesson of *B* boards:
 
 ### Table views
 
-| View | Hands shown | Use |
-|---|---|---|
-| **Full Table** (NESW) | all four | dealer file / reference |
-| **North-South** (NS) | the partnership | partnership practice |
-| **South** (`studentSeat`) | one seat | single-student handout |
+| View | Hands shown | Delivery mode | Use |
+|---|---|---|---|
+| **Full Table** (NESW) | all four | **in-person** | physically dealt; dealer file / reference |
+| **North-South** (NS) | the partnership | **online** | partnership practice on an online platform |
+| **South** (`studentSeat`) | one seat | **online** | single-student practice on an online platform |
+
+`tables` selects which of these a collection emits (in-person only, online only, or both).
 
 ### Standard artifacts
 
