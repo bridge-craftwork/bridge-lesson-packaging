@@ -22,7 +22,7 @@ collection supplies its deals and a small config, and gets the standard output.
 
 1. Arrange practice-deal PBNs by `category / lesson` (plus any optional per-lesson companion
    PDFs).
-2. Provide a config (see `collection.example.toml`) — name prefix, set size(s), table views,
+2. Provide a config (see `configs/example.conf`) — name prefix, set size(s), table views,
    replication, companion-doc globs, etc.
 3. Run the packager over the collection's deals to produce the standard mixed-use materials tree.
 
@@ -37,9 +37,10 @@ artifact list, and the optional `[SkillPath]` metadata pass-through.
 
 ## Status
 
-v1: the contract (`CONTRACT.md`) and config schema are defined. The consolidated builder
-(replacing the per-collection scripts) is being ported here from the existing collection
-build scripts, which already use the same two tools.
+v1: `CONTRACT.md` + `package.sh` (the consolidated, config-driven builder) + `configs/*.conf` +
+`stats.py`. `package.sh` was ported from the most feature-complete existing script and validated
+to reproduce a collection's existing output structure byte-for-byte. Per-collection cutover
+(pointing each repo at the shared tool and retiring its own script) is the remaining step.
 
 ## Why
 
