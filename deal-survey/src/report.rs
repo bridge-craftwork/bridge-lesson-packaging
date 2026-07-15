@@ -122,22 +122,21 @@ fn print_detail(p: &CollectionProfile) {
         print_dist("  fired  ", &p.techniques);
     }
     if let Some(topics) = &p.by_topic {
-        println!("  topics (baseline prior vs observed cardplay):");
+        println!("  topics (baseline prior vs observed, + combined difficulty):");
         println!(
-            "    {:<28} {:>5} {:>9} | {:>4} {:>4} {:>4} {:>5} | {:>8}",
-            "topic", "deals", "base b/cp", "L0", "L1", "L2", "n-mk", "combined"
+            "    {:<28} {:>5} {:>9} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}",
+            "topic", "deals", "base b/cp", "L0", "L1", "L2", "n-mk", "comb-bid", "comb-cp"
         );
-        for (name, t) in topics {
-            let combined = if t.combined_cardplay_n > 0 {
-                format!(
-                    "{:.1}",
-                    t.combined_cardplay_sum as f64 / t.combined_cardplay_n as f64
-                )
+        let mean = |sum: usize, n: usize| {
+            if n > 0 {
+                format!("{:.1}", sum as f64 / n as f64)
             } else {
                 "  -".to_string()
-            };
+            }
+        };
+        for (name, t) in topics {
             println!(
-                "    {:<28} {:>5} {:>4}/{:<4} | {:>4} {:>4} {:>4} {:>5} | {:>8}",
+                "    {:<28} {:>5} {:>4}/{:<4} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}",
                 truncate(name, 28),
                 t.deal_count,
                 t.baseline_bidding,
@@ -146,10 +145,11 @@ fn print_detail(p: &CollectionProfile) {
                 t.observed_cardplay[1],
                 t.observed_cardplay[2],
                 t.not_makeable,
-                combined,
+                mean(t.combined_bidding_sum, t.combined_bidding_n),
+                mean(t.combined_cardplay_sum, t.combined_cardplay_n),
             );
         }
-        println!("    (base b/cp = authored bidding/cardplay baseline; combined = baseline ± observed ladder, mean over makeable)");
+        println!("    (base b/cp = authored bidding/cardplay baseline; comb = baseline ± observed level, mean)");
     }
     if let Some(ed) = &p.editorial {
         println!("  editorial:");

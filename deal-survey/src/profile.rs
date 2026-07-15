@@ -53,6 +53,13 @@ pub struct TopicStats {
     /// combination — baseline sets the floor, the observed ladder nudges ±1.
     pub combined_cardplay_sum: usize,
     pub combined_cardplay_n: usize,
+    /// Combined bidding difficulty = max(0, baseline + (auction_level - 1)),
+    /// summed over deals with an auction. STARTING WEIGHTING (tunable): the
+    /// per-deal auction complexity is bucketed 0/1/2 from the cheap proxies —
+    /// see `auction_complexity_level` — then nudges the topic baseline ±1, the
+    /// same shape as cardplay. Revise once real results are reviewed.
+    pub combined_bidding_sum: usize,
+    pub combined_bidding_n: usize,
 }
 
 /// Cardplay-difficulty histogram (mutually exclusive buckets over all deals).
@@ -192,6 +199,11 @@ pub fn build(
                 if a.contested {
                     st.contested += 1;
                 }
+                // Combined bidding = baseline nudged ±1 by observed auction level.
+                let level = auction_complexity_level(a);
+                let combined = (base.bidding as i32 + level as i32 - 1).max(0);
+                st.combined_bidding_sum += combined as usize;
+                st.combined_bidding_n += 1;
             }
             let makes = rec
                 .baseline
@@ -294,6 +306,26 @@ pub fn build(
         by_topic: topics.map(|_| by_topic),
         editorial,
         versions: crate::model::Versions::current(),
+    }
+}
+
+/// Bucket a deal's auction complexity 0/1/2 from the cheap proxies. STARTING
+/// WEIGHTING (tunable): a signal count over {contested, any double, double of
+/// the final contract, any high bid}. 0 = simple (no signals AND ≤3 bids, e.g.
+/// 1NT–3NT); 2 = clearly complex (≥2 signals, e.g. a contested penalty-doubled
+/// auction); 1 = otherwise. This mirrors the cardplay ladder's 0/1/2 so the two
+/// combined scores share a shape.
+fn auction_complexity_level(a: &crate::model::AuctionInfo) -> u8 {
+    let signals = a.contested as u8
+        + (a.doubles > 0) as u8
+        + a.double_of_final as u8
+        + (a.high_bids > 0) as u8;
+    if signals == 0 && a.bids <= 3 {
+        0
+    } else if signals >= 2 {
+        2
+    } else {
+        1
     }
 }
 
