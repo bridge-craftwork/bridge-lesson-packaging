@@ -102,12 +102,30 @@ fn is_high_bid(level: u8, strain: Strain) -> bool {
 }
 
 /// Build a `Source` for a board within a collection scan.
-pub fn source_for(collection: &str, file: &str, board: Option<u32>) -> Source {
+pub fn source_for(collection: &str, file: &str, board: &Board) -> Source {
     Source {
         collection: collection.to_string(),
         file: file.to_string(),
-        board,
+        board: board.number,
+        category: category_of(board, file),
     }
+}
+
+/// Lesson grouping for a deal: the `[SkillPath]` first component (Baker-style),
+/// else the leading folder of the file path (folder-structured collections),
+/// else "(uncategorized)".
+fn category_of(board: &Board, file: &str) -> String {
+    if let Some(sp) = board.extra_tag("SkillPath") {
+        if let Some(cat) = sp.split('/').next() {
+            if !cat.is_empty() {
+                return cat.to_string();
+            }
+        }
+    }
+    if let Some((dir, _)) = file.split_once('/') {
+        return dir.to_string();
+    }
+    "(uncategorized)".to_string()
 }
 
 #[cfg(test)]

@@ -61,6 +61,12 @@ bidding = 1
 cardplay = 2
 
 [[topic]]
+name = "Loser-on-loser"
+match = ["Loser on Loser", "Loser-on-Loser"]
+bidding = 1
+cardplay = 3
+
+[[topic]]
 name = "Establishing tricks"
 match = ["Establish", "Length", "Promotion", "Developing Tricks"]
 bidding = 1
@@ -78,8 +84,8 @@ name = "Defense / opening leads"
 # catches the defensive-cardplay category without stealing competitive-bidding
 # lessons.
 match = ["Defense/", "Defense ", "Opening Lead", "OLead", "Defensive Play", "Defence",
-         "Signals", "Discard", "Second Hand", "SecondHand", "Third Hand", "Third-Hand",
-         "ThirdHand", "Trump Coup"]
+         "Signals", "Signaling", "Signalling", "Discard", "Second Hand", "SecondHand",
+         "Third Hand", "Third-Hand", "ThirdHand", "Trump Coup"]
 bidding = 1
 cardplay = 3
 
@@ -509,6 +515,12 @@ cardplay = 1
 [[topic]]
 name = "Jacoby / transfers"
 match = ["Jacoby Transfer", "Transfer", "Jacoby"]
+bidding = 1
+cardplay = 1
+
+[[topic]]
+name = "Responding to 1NT"
+match = ["Responding to 1NT", "Responses to 1NT", "1NT Response"]
 bidding = 1
 cardplay = 1
 

@@ -31,6 +31,10 @@ pub struct Source {
     pub collection: String,
     pub file: String,
     pub board: Option<u32>,
+    /// Lesson grouping: the deal's `[SkillPath]` first component if present,
+    /// else the leading folder of `file`, else "(uncategorized)".
+    #[serde(default)]
+    pub category: String,
 }
 
 /// Stage 1 — what the PBN actually contains. No solves.

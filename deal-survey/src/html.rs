@@ -28,16 +28,27 @@ pub fn render(profiles: &[CollectionProfile]) -> String {
 }
 
 fn summary_table(h: &mut String, profiles: &[CollectionProfile]) {
-    h.push_str("<h2>Collections</h2>\n<table class=\"grid\">\n<thead><tr>");
-    for c in ["collection", "deals", "makeable", "L0", "L1", "L2", "uncl", "auction", "commentary", "expl. contract", "finesse", "ruff"] {
+    h.push_str("<h2>Collections</h2>\n");
+    h.push_str("<p class=\"note\">The two coloured columns are the overall combined difficulty (mean over the collection), green → red.</p>\n");
+    h.push_str("<table class=\"grid\">\n<thead><tr>");
+    for c in ["collection", "deals", "cardplay", "bidding", "makeable", "L0", "L1", "L2", "uncl", "auction", "commentary", "expl. contract", "finesse", "ruff"] {
         let _ = write!(h, "<th>{}</th>", esc(c));
     }
     h.push_str("</tr></thead>\n<tbody>\n");
     for p in profiles {
         let mk = makeable(p);
         let d = &p.difficulty;
+        // Overall combined difficulty = mean across the collection's lessons.
+        let (cp_sum, cp_n) = p.by_lesson.values().fold((0, 0), |(s, n), t| {
+            (s + t.combined_cardplay_sum, n + t.combined_cardplay_n)
+        });
+        let (bid_sum, bid_n) = p.by_lesson.values().fold((0, 0), |(s, n), t| {
+            (s + t.combined_bidding_sum, n + t.combined_bidding_n)
+        });
         let _ = write!(h, "<tr><td class=\"name\">{}</td>", esc(&p.collection));
         cell_int(h, p.deal_count);
+        cell_comb(h, cp_sum, cp_n);
+        cell_comb(h, bid_sum, bid_n);
         cell_pct(h, mk, p.deal_count);
         cell_pct(h, d.cash_out_0, mk);
         cell_pct(h, d.establish_1, mk);
@@ -99,8 +110,65 @@ fn collection_section(h: &mut String, p: &CollectionProfile) {
         h.push_str("<h3>By topic</h3>\n");
         breakdown_table(h, topics, true);
     }
-    h.push_str("<h3>By lesson <span class=\"sub\">(ranked hardest cardplay first)</span></h3>\n");
-    breakdown_table(h, &p.by_lesson, false);
+    h.push_str("<h3>By lesson <span class=\"sub\">(grouped by category, hardest first)</span></h3>\n");
+    lessons_by_category(h, p);
+}
+
+/// Per-lesson table grouped into category sections (each with a rollup row),
+/// categories and lessons both ordered hardest-cardplay-first.
+fn lessons_by_category(h: &mut String, p: &CollectionProfile) {
+    if p.by_lesson.is_empty() {
+        return;
+    }
+    h.push_str("<table class=\"grid\">\n<thead><tr>");
+    for c in ["lesson", "deals", "base b", "base cp", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid", "topic"] {
+        let _ = write!(h, "<th>{}</th>", esc(c));
+    }
+    h.push_str("</tr></thead>\n<tbody>\n");
+
+    // Categories ordered hardest first (by the category rollup's cardplay).
+    let mut cats: Vec<(&String, &TopicStats)> = p.by_category.iter().collect();
+    cats.sort_by(|a, b| ckey(b.1).partial_cmp(&ckey(a.1)).unwrap());
+
+    for (cat, roll) in cats {
+        // Category rollup row.
+        let _ = write!(
+            h,
+            "<tr class=\"cat\"><td class=\"catname\" colspan=\"8\">{} <span class=\"sub\">({} deals)</span></td>",
+            esc(cat), roll.deal_count
+        );
+        cell_comb(h, roll.combined_cardplay_sum, roll.combined_cardplay_n);
+        cell_comb(h, roll.combined_bidding_sum, roll.combined_bidding_n);
+        h.push_str("<td></td></tr>\n");
+
+        // Lessons in this category, hardest first.
+        let mut rows: Vec<(&String, &TopicStats)> = p
+            .by_lesson
+            .iter()
+            .filter(|(_, t)| &t.category == cat)
+            .collect();
+        rows.sort_by(|a, b| ckey(b.1).partial_cmp(&ckey(a.1)).unwrap().then(b.1.deal_count.cmp(&a.1.deal_count)));
+        for (lesson, t) in rows {
+            let _ = write!(h, "<tr><td class=\"name indent\">{}</td>", esc(&lesson_label(lesson)));
+            cell_int(h, t.deal_count);
+            cell_base(h, t.baseline_bidding);
+            cell_base(h, t.baseline_cardplay);
+            cell_int(h, t.observed_cardplay[0]);
+            cell_int(h, t.observed_cardplay[1]);
+            cell_int(h, t.observed_cardplay[2]);
+            cell_int(h, t.not_makeable);
+            cell_comb(h, t.combined_cardplay_sum, t.combined_cardplay_n);
+            cell_comb(h, t.combined_bidding_sum, t.combined_bidding_n);
+            let _ = write!(h, "<td class=\"topic\">{}</td>", esc(&t.topic));
+            h.push_str("</tr>\n");
+        }
+    }
+    h.push_str("</tbody>\n</table>\n");
+}
+
+/// Sort key: combined cardplay mean (–1 when none, so empty sinks).
+fn ckey(t: &TopicStats) -> f64 {
+    cmean(t.combined_cardplay_sum, t.combined_cardplay_n)
 }
 
 /// Shared table for by-topic / by-lesson (rows sorted hardest cardplay first).
@@ -232,5 +300,8 @@ table.grid td.topic{text-align:left;color:var(--muted);font-size:12px;}
 table.grid tbody tr:nth-child(even){background:var(--zebra);}
 td.num{text-align:right;}
 td.heat{font-weight:600;border-radius:3px;}
+table.grid tr.cat td{background:var(--head);font-weight:700;border-top:2px solid var(--line);}
+table.grid td.catname{text-align:left;letter-spacing:.02em;}
+table.grid td.name.indent{padding-left:22px;font-weight:400;}
 </style>
 "#;

@@ -32,6 +32,9 @@ pub struct CollectionProfile {
     /// present; the `topic` field is filled when a topic table was supplied.
     #[serde(default)]
     pub by_lesson: BTreeMap<String, TopicStats>,
+    /// Per-category rollup (the collection's own lesson grouping).
+    #[serde(default)]
+    pub by_category: BTreeMap<String, TopicStats>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editorial: Option<Editorial>,
     pub versions: crate::model::Versions,
@@ -45,6 +48,9 @@ pub struct TopicStats {
     /// Resolved topic (only used in the per-lesson map; empty in by_topic).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub topic: String,
+    /// Lesson category (only used in the per-lesson map; empty elsewhere).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub category: String,
     pub baseline_bidding: u8,
     pub baseline_cardplay: u8,
     /// Observed cardplay ladder among makeable deals: [L0, L1, L2].
@@ -191,6 +197,7 @@ pub fn build(
     let mut techniques: BTreeMap<String, usize> = BTreeMap::new();
     let mut by_topic: BTreeMap<String, TopicStats> = BTreeMap::new();
     let mut by_lesson: BTreeMap<String, TopicStats> = BTreeMap::new();
+    let mut by_category: BTreeMap<String, TopicStats> = BTreeMap::new();
 
     for rec in &records {
         // Resolve the deal's topic + baseline (defaults if no table).
@@ -198,11 +205,20 @@ pub fn build(
             Some(t) => t.resolve(&rec.source.file),
             None => ("(none)".to_string(), crate::topics::Baseline::default()),
         };
+        let category = if rec.source.category.is_empty() {
+            "(uncategorized)".to_string()
+        } else {
+            rec.source.category.clone()
+        };
 
         // Per-lesson breakdown (always).
         let lesson = by_lesson.entry(rec.source.file.clone()).or_default();
         lesson.topic = topic_name.clone();
+        lesson.category = category.clone();
         accumulate(lesson, rec, base);
+
+        // Per-category rollup (always).
+        accumulate(by_category.entry(category).or_default(), rec, base);
 
         // Per-topic breakdown (only with a topic table).
         if topics.is_some() {
@@ -287,6 +303,7 @@ pub fn build(
         techniques,
         by_topic: topics.map(|_| by_topic),
         by_lesson,
+        by_category,
         editorial,
         versions: crate::model::Versions::current(),
     }
@@ -397,7 +414,7 @@ mod tests {
     fn rec(difficulty: Option<u8>, dd_makes: bool, fired: &[&str], contract: &str) -> DealRecord {
         DealRecord {
             hash: "h".into(),
-            source: Source { collection: "Test".into(), file: "f.pbn".into(), board: Some(1) },
+            source: Source { collection: "Test".into(), file: "f.pbn".into(), board: Some(1), category: "cat".into() },
             structural: Structural {
                 contract: Some(contract.split_whitespace().next().unwrap().to_string()),
                 contract_provenance: ContractProvenance::Explicit,

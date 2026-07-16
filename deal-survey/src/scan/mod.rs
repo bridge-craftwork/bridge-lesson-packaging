@@ -81,7 +81,7 @@ pub fn scan_collection(collection_dir: &Path, out_dir: &Path) -> Result<ScanSumm
             let (baseline, cardplay, probes) = analyze(board);
             let record = DealRecord {
                 hash,
-                source: structural::source_for(&collection, &rel, board.number),
+                source: structural::source_for(&collection, &rel, board),
                 structural: structural::structural_of(board),
                 baseline,
                 cardplay,

@@ -179,29 +179,19 @@ fn print_detail(p: &CollectionProfile) {
     }
 }
 
-/// Per-lesson difficulty table, ranked hardest cardplay first.
+/// Per-lesson difficulty table, grouped by category (hardest first).
 fn print_lessons(p: &CollectionProfile) {
+    use crate::profile::TopicStats;
     if p.by_lesson.is_empty() {
         return;
     }
-    let mean = |sum: usize, n: usize| if n > 0 { sum as f64 / n as f64 } else { 0.0 };
-    let mut rows: Vec<(&String, &crate::profile::TopicStats)> = p.by_lesson.iter().collect();
-    // Hardest first: combined cardplay, then combined bidding, then deal count.
-    rows.sort_by(|a, b| {
-        mean(b.1.combined_cardplay_sum, b.1.combined_cardplay_n)
-            .partial_cmp(&mean(a.1.combined_cardplay_sum, a.1.combined_cardplay_n))
-            .unwrap()
-            .then(
-                mean(b.1.combined_bidding_sum, b.1.combined_bidding_n)
-                    .partial_cmp(&mean(a.1.combined_bidding_sum, a.1.combined_bidding_n))
-                    .unwrap(),
-            )
-    });
-    println!("  lessons (ranked hardest cardplay first):");
-    println!(
-        "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
-        "lesson", "deals", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid", "topic"
-    );
+    let cp = |t: &TopicStats| {
+        if t.combined_cardplay_n > 0 {
+            t.combined_cardplay_sum as f64 / t.combined_cardplay_n as f64
+        } else {
+            -1.0
+        }
+    };
     let fmt = |sum: usize, n: usize| {
         if n > 0 {
             format!("{:.1}", sum as f64 / n as f64)
@@ -209,19 +199,41 @@ fn print_lessons(p: &CollectionProfile) {
             "  -".to_string()
         }
     };
-    for (lesson, t) in rows {
+    println!("  lessons by category (hardest cardplay first):");
+    println!(
+        "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
+        "lesson", "deals", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid", "topic"
+    );
+
+    let mut cats: Vec<(&String, &TopicStats)> = p.by_category.iter().collect();
+    cats.sort_by(|a, b| cp(b.1).partial_cmp(&cp(a.1)).unwrap());
+    for (cat, roll) in cats {
         println!(
-            "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
-            truncate(&lesson_label(lesson), 34),
-            t.deal_count,
-            t.observed_cardplay[0],
-            t.observed_cardplay[1],
-            t.observed_cardplay[2],
-            t.not_makeable,
-            fmt(t.combined_cardplay_sum, t.combined_cardplay_n),
-            fmt(t.combined_bidding_sum, t.combined_bidding_n),
-            t.topic,
+            "  ▸ {}  ({} deals, cp {}, bid {})",
+            cat,
+            roll.deal_count,
+            fmt(roll.combined_cardplay_sum, roll.combined_cardplay_n),
+            fmt(roll.combined_bidding_sum, roll.combined_bidding_n),
         );
+        let mut rows: Vec<(&String, &TopicStats)> =
+            p.by_lesson.iter().filter(|(_, t)| &t.category == cat).collect();
+        rows.sort_by(|a, b| {
+            cp(b.1).partial_cmp(&cp(a.1)).unwrap().then(b.1.deal_count.cmp(&a.1.deal_count))
+        });
+        for (lesson, t) in rows {
+            println!(
+                "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
+                truncate(&lesson_label(lesson), 34),
+                t.deal_count,
+                t.observed_cardplay[0],
+                t.observed_cardplay[1],
+                t.observed_cardplay[2],
+                t.not_makeable,
+                fmt(t.combined_cardplay_sum, t.combined_cardplay_n),
+                fmt(t.combined_bidding_sum, t.combined_bidding_n),
+                t.topic,
+            );
+        }
     }
 }
 
