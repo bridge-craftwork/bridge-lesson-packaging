@@ -278,7 +278,10 @@ filter_folders() {
 # Count boards in a PBN file
 get_hand_count() {
     local file="$1"
-    grep -c '^\[Board' "$file" 2>/dev/null || echo "0"
+    # Match the board header "[Board "N"]" only -- the trailing space avoids also matching
+    # "[BoardVersionToken ...]" (added by the board-identity stamping), which would otherwise
+    # double the count and corrupt slicing.
+    grep -c '^\[Board ' "$file" 2>/dev/null || echo "0"
 }
 
 #---------------------------------------------------
@@ -416,8 +419,8 @@ action_slice_deals() {
         return
     fi
 
-    # Extract header (everything before first [Board])
-    local header=$(sed -n '1,/^\[Board/p' "$pbn_file" | sed '$d')
+    # Extract header (everything before the first [Board "N"] header)
+    local header=$(sed -n '1,/^\[Board /p' "$pbn_file" | sed '$d')
 
     # Process each slice size
     for slice_size in "${slices[@]}"; do
@@ -459,7 +462,7 @@ action_slice_deals() {
                     new_board = 0
                     in_board = 0
                 }
-                /^\[Board/ {
+                /^\[Board / {
                     board_num++
                     if (board_num >= start && board_num <= end) {
                         in_board = 1
