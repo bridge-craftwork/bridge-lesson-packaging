@@ -15,23 +15,74 @@ pub fn render(profiles: &[CollectionProfile]) -> String {
     h.push_str(STYLE);
     h.push_str("</head>\n<body>\n<main>\n");
     h.push_str("<h1>Lesson-collection difficulty report</h1>\n");
-    h.push_str("<p class=\"note\">Cardplay ladder 0 cash-out · 1 establish · 2 single technique · 3 timing/entries · 4 advanced (squeeze/endplay). \
-                Bidding 0 natural · 1 fundamental · 2 gadget · 3 upper-intermediate · 4 advanced · 5 expert. \
-                <em>comb</em> columns = topic baseline nudged by observed difficulty.</p>\n");
+    h.push_str("<p class=\"note\">Difficulty on two axes, 0 (easy, green) → hard (red): \
+                <strong>Play</strong> (cardplay: 0 cash-out · 2 finesse/ruff · 4 squeeze/endplay) and \
+                <strong>Auction</strong> (bidding: 0 natural · 2 common gadget · 5 expert). \
+                Scores are the lesson's topic baseline nudged by the observed deals.</p>\n");
+    h.push_str(
+        "<nav class=\"tabs\">\
+         <button data-tab=\"summary\" class=\"active\">Summary</button>\
+         <button data-tab=\"details\">Details</button></nav>\n",
+    );
 
+    // Tab 1 — Summary: collections + lessons (deals, Auction, Play only).
+    h.push_str("<section id=\"summary\" class=\"tab active\">\n");
+    summary_table(&mut h, profiles);
+    for p in profiles {
+        let _ = write!(h, "<h2>{} <span class=\"sub\">({} deals)</span></h2>\n", esc(&p.collection), p.deal_count);
+        summary_lessons(&mut h, p);
+    }
+    h.push_str("</section>\n");
+
+    // Tab 2 — Details: the full working sheet.
+    h.push_str("<section id=\"details\" class=\"tab\">\n");
     summary_table(&mut h, profiles);
     for p in profiles {
         collection_section(&mut h, p);
     }
+    h.push_str("</section>\n");
+
+    h.push_str(SCRIPT);
     h.push_str("</main>\n</body>\n</html>\n");
     h
+}
+
+/// Summary-tab per-lesson table: only lesson, deals, Auction (bidding) and Play
+/// (cardplay) combined scores — grouped by category, in navigation order.
+fn summary_lessons(h: &mut String, p: &CollectionProfile) {
+    if p.by_lesson.is_empty() {
+        return;
+    }
+    h.push_str("<table class=\"grid summary\">\n<thead><tr>");
+    for c in ["lesson", "deals", "Auction", "Play"] {
+        let _ = write!(h, "<th>{}</th>", esc(c));
+    }
+    h.push_str("</tr></thead>\n<tbody>\n");
+    for (cat, roll) in p.by_category.iter() {
+        let _ = write!(
+            h,
+            "<tr class=\"cat\"><td class=\"catname\" colspan=\"2\">{} <span class=\"sub\">({} deals)</span></td>",
+            esc(cat), roll.deal_count
+        );
+        cell_comb(h, roll.combined_bidding_sum, roll.combined_bidding_n);
+        cell_comb(h, roll.combined_cardplay_sum, roll.combined_cardplay_n);
+        h.push_str("</tr>\n");
+        for (_, t) in p.by_lesson.iter().filter(|(_, t)| &t.category == cat) {
+            let _ = write!(h, "<tr><td class=\"name indent\">{}</td>", esc(&t.lesson));
+            cell_int(h, t.deal_count);
+            cell_comb(h, t.combined_bidding_sum, t.combined_bidding_n);
+            cell_comb(h, t.combined_cardplay_sum, t.combined_cardplay_n);
+            h.push_str("</tr>\n");
+        }
+    }
+    h.push_str("</tbody>\n</table>\n");
 }
 
 fn summary_table(h: &mut String, profiles: &[CollectionProfile]) {
     h.push_str("<h2>Collections</h2>\n");
     h.push_str("<p class=\"note\">The two coloured columns are the overall combined difficulty (mean over the collection), green → red.</p>\n");
     h.push_str("<table class=\"grid\">\n<thead><tr>");
-    for c in ["collection", "deals", "cardplay", "bidding", "makeable", "L0", "L1", "L2", "uncl", "auction", "commentary", "expl. contract", "finesse", "ruff"] {
+    for c in ["collection", "deals", "Auction", "Play", "makeable", "L0", "L1", "L2", "uncl", "auction%", "commentary", "expl. contract", "finesse", "ruff"] {
         let _ = write!(h, "<th>{}</th>", esc(c));
     }
     h.push_str("</tr></thead>\n<tbody>\n");
@@ -47,8 +98,8 @@ fn summary_table(h: &mut String, profiles: &[CollectionProfile]) {
         });
         let _ = write!(h, "<tr><td class=\"name\">{}</td>", esc(&p.collection));
         cell_int(h, p.deal_count);
-        cell_comb(h, cp_sum, cp_n);
-        cell_comb(h, bid_sum, bid_n);
+        cell_comb(h, bid_sum, bid_n); // Auction
+        cell_comb(h, cp_sum, cp_n); // Play
         cell_pct(h, mk, p.deal_count);
         cell_pct(h, d.cash_out_0, mk);
         cell_pct(h, d.establish_1, mk);
@@ -273,5 +324,25 @@ td.heat{font-weight:600;border-radius:3px;}
 table.grid tr.cat td{background:var(--head);font-weight:700;border-top:2px solid var(--line);}
 table.grid td.catname{text-align:left;letter-spacing:.02em;}
 table.grid td.name.indent{padding-left:22px;font-weight:400;}
+nav.tabs{display:flex;gap:2px;margin:18px 0 6px;border-bottom:1px solid var(--line);}
+nav.tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);font:inherit;font-weight:600;padding:8px 16px;cursor:pointer;}
+nav.tabs button:hover{color:var(--fg);}
+nav.tabs button.active{color:var(--fg);border-bottom-color:#3fa34d;}
+.tab{display:none;}
+.tab.active{display:block;}
+table.grid.summary{max-width:680px;}
+table.grid.summary th,table.grid.summary td{padding:6px 16px;}
 </style>
+"#;
+
+const SCRIPT: &str = r#"<script>
+document.querySelectorAll('nav.tabs button').forEach(function (b) {
+  b.addEventListener('click', function () {
+    document.querySelectorAll('nav.tabs button').forEach(function (x) { x.classList.remove('active'); });
+    document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+    document.getElementById(b.dataset.tab).classList.add('active');
+  });
+});
+</script>
 "#;
