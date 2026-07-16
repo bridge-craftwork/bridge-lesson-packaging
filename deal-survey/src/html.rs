@@ -146,8 +146,8 @@ fn lessons_by_category(h: &mut String, p: &CollectionProfile) {
             .iter()
             .filter(|(_, t)| &t.category == cat)
             .collect();
-        for (lesson, t) in rows {
-            let _ = write!(h, "<tr><td class=\"name indent\">{}</td>", esc(&lesson_label(lesson)));
+        for (_, t) in rows {
+            let _ = write!(h, "<tr><td class=\"name indent\">{}</td>", esc(&t.lesson));
             cell_int(h, t.deal_count);
             cell_base(h, t.baseline_bidding);
             cell_base(h, t.baseline_cardplay);
@@ -179,8 +179,7 @@ fn breakdown_table(h: &mut String, map: &BTreeMap<String, TopicStats>, is_topic:
     }
     h.push_str("</tr></thead>\n<tbody>\n");
     for (key, t) in rows {
-        let label = if is_topic { key.clone() } else { lesson_label(key) };
-        let _ = write!(h, "<tr><td class=\"name\">{}</td>", esc(&label));
+        let _ = write!(h, "<tr><td class=\"name\">{}</td>", esc(key));
         cell_int(h, t.deal_count);
         cell_base(h, t.baseline_bidding);
         cell_base(h, t.baseline_cardplay);
@@ -244,15 +243,6 @@ fn pct_str(n: usize, d: usize) -> String {
     } else {
         format!("{:.0}%", 100.0 * n as f64 / d as f64)
     }
-}
-fn lesson_label(path: &str) -> String {
-    let base = path.rsplit('/').next().unwrap_or(path);
-    let base = base.strip_suffix(".pbn").unwrap_or(base);
-    let base = base
-        .strip_prefix("Baker Bridge ")
-        .or_else(|| base.strip_prefix("thinking-bridge-"))
-        .unwrap_or(base);
-    base.strip_suffix(" practice deals").unwrap_or(base).to_string()
 }
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")

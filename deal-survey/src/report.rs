@@ -210,10 +210,10 @@ fn print_lessons(p: &CollectionProfile) {
         );
         let rows: Vec<(&String, &TopicStats)> =
             p.by_lesson.iter().filter(|(_, t)| &t.category == cat).collect();
-        for (lesson, t) in rows {
+        for (_, t) in rows {
             println!(
                 "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
-                truncate(&lesson_label(lesson), 34),
+                truncate(&t.lesson, 34),
                 t.deal_count,
                 t.observed_cardplay[0],
                 t.observed_cardplay[1],
@@ -227,16 +227,6 @@ fn print_lessons(p: &CollectionProfile) {
     }
 }
 
-/// Readable lesson label: basename without extension.
-fn lesson_label(path: &str) -> String {
-    let base = path.rsplit('/').next().unwrap_or(path);
-    let base = base.strip_suffix(".pbn").unwrap_or(base);
-    let base = base
-        .strip_prefix("Baker Bridge ")
-        .or_else(|| base.strip_prefix("thinking-bridge-"))
-        .unwrap_or(base);
-    base.strip_suffix(" practice deals").unwrap_or(base).to_string()
-}
 
 fn print_dist(label: &str, map: &std::collections::BTreeMap<String, usize>) {
     if map.is_empty() {

@@ -51,6 +51,9 @@ pub struct TopicStats {
     /// Lesson category (only used in the per-lesson map; empty elsewhere).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub category: String,
+    /// Lesson display label (only used in the per-lesson map).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub lesson: String,
     pub baseline_bidding: u8,
     pub baseline_cardplay: u8,
     /// Observed cardplay ladder among makeable deals: [L0, L1, L2].
@@ -211,10 +214,15 @@ pub fn build(
             rec.source.category.clone()
         };
 
-        // Per-lesson breakdown (always).
-        let lesson = by_lesson.entry(rec.source.file.clone()).or_default();
+        // Per-lesson breakdown (always). Lessons aggregate their slices/views/
+        // rotation variants under a single folder-aware identity.
+        let lesson_name = lesson_of(&rec.source.file, &category);
+        let lesson = by_lesson
+            .entry(format!("{category}\u{0}{lesson_name}"))
+            .or_default();
         lesson.topic = topic_name.clone();
         lesson.category = category.clone();
+        lesson.lesson = lesson_name;
         accumulate(lesson, rec, base);
 
         // Per-category rollup (always).
@@ -367,6 +375,86 @@ fn auction_complexity_level(a: &crate::model::AuctionInfo) -> u8 {
         2
     } else {
         1
+    }
+}
+
+/// A deal's lesson identity: the nearest lesson folder walking up from the file
+/// (skipping view/set-size folders and the category), else the normalized
+/// filename. This rolls a lesson's slices (e.g. "… 1-6", "… 7-12"), views, and
+/// rotation variants up into one lesson.
+fn lesson_of(file: &str, category: &str) -> String {
+    let parts: Vec<&str> = file.split('/').collect();
+    if parts.len() >= 3 {
+        // Folder components between the category (parts[0]) and the file.
+        for i in (1..parts.len() - 1).rev() {
+            let f = parts[i];
+            if is_view_or_set(f) {
+                continue;
+            }
+            if f == category {
+                break;
+            }
+            return f.to_string();
+        }
+    }
+    normalize_lesson_name(parts.last().copied().unwrap_or(file))
+}
+
+/// A packaging folder that is not itself a lesson (a seat view or a set slice).
+fn is_view_or_set(f: &str) -> bool {
+    let v = f.to_lowercase();
+    matches!(
+        v.as_str(),
+        "full table" | "north-south" | "south" | "north" | "east" | "west" | "ns" | "n-s" | "nesw"
+    ) || v.ends_with("board sets")
+        || v.ends_with("board set")
+        || is_set_size(f)
+}
+
+/// Clean a filename into a lesson label: strip packaging prefixes/suffixes and
+/// trailing slice ranges ("1-6") / set sizes ("6x6") / "Nonstandard".
+fn normalize_lesson_name(filename: &str) -> String {
+    let mut s = filename.strip_suffix(".pbn").unwrap_or(filename).to_string();
+    for p in ["thinking-bridge-", "Baker Bridge "] {
+        if let Some(r) = s.strip_prefix(p) {
+            s = r.to_string();
+        }
+    }
+    for suf in [" practice deals", " - NESW", " - NES", " - NS", " - S", " Nonstandard"] {
+        if let Some(r) = s.strip_suffix(suf) {
+            s = r.to_string();
+        }
+    }
+    // Strip trailing range / set-size tokens, repeatedly.
+    loop {
+        let trimmed = s.trim_end();
+        if let Some(idx) = trimmed.rfind(' ') {
+            let tail = &trimmed[idx + 1..];
+            if is_range(tail) || is_set_size(tail) {
+                s.truncate(idx);
+                continue;
+            }
+        }
+        break;
+    }
+    s.trim().to_string()
+}
+
+fn is_range(t: &str) -> bool {
+    two_numbers(t, '-')
+}
+fn is_set_size(t: &str) -> bool {
+    two_numbers(t, 'x')
+}
+fn two_numbers(t: &str, sep: char) -> bool {
+    match t.split_once(sep) {
+        Some((a, b)) => {
+            !a.is_empty()
+                && !b.is_empty()
+                && a.bytes().all(|c| c.is_ascii_digit())
+                && b.bytes().all(|c| c.is_ascii_digit())
+        }
+        None => false,
     }
 }
 
