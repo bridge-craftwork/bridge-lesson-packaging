@@ -111,19 +111,19 @@ pub fn source_for(collection: &str, file: &str, board: &Board) -> Source {
     }
 }
 
-/// Lesson grouping for a deal: the `[SkillPath]` first component (Baker-style),
-/// else the leading folder of the file path (folder-structured collections),
-/// else "(uncategorized)".
+/// Lesson grouping for a deal: the leading folder of the file path (the
+/// navigable organization), else the `[SkillPath]` first component as a fallback
+/// for flat collections, else "(uncategorized)".
 fn category_of(board: &Board, file: &str) -> String {
+    if let Some((dir, _)) = file.split_once('/') {
+        return dir.to_string();
+    }
     if let Some(sp) = board.extra_tag("SkillPath") {
         if let Some(cat) = sp.split('/').next() {
             if !cat.is_empty() {
                 return cat.to_string();
             }
         }
-    }
-    if let Some((dir, _)) = file.split_once('/') {
-        return dir.to_string();
     }
     "(uncategorized)".to_string()
 }

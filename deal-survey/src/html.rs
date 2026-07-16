@@ -272,7 +272,12 @@ fn cmean(sum: usize, n: usize) -> f64 {
 }
 fn lesson_label(path: &str) -> String {
     let base = path.rsplit('/').next().unwrap_or(path);
-    base.strip_suffix(".pbn").unwrap_or(base).to_string()
+    let base = base.strip_suffix(".pbn").unwrap_or(base);
+    let base = base
+        .strip_prefix("Baker Bridge ")
+        .or_else(|| base.strip_prefix("thinking-bridge-"))
+        .unwrap_or(base);
+    base.strip_suffix(" practice deals").unwrap_or(base).to_string()
 }
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
