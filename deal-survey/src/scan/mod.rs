@@ -67,7 +67,7 @@ pub fn scan_collection(collection_dir: &Path, out_dir: &Path) -> Result<ScanSumm
                 continue;
             }
             sum.total += 1;
-            let hash = content_hash(&deal_pbn);
+            let hash = content_hash(&board.deal); // rotation-canonical
 
             // Cache: skip deals already fully baselined at this tool/ladder.
             if let Some(existing) = cached_record(out_dir, &hash) {
