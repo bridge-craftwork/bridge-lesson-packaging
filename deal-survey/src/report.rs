@@ -179,19 +179,12 @@ fn print_detail(p: &CollectionProfile) {
     }
 }
 
-/// Per-lesson difficulty table, grouped by category (hardest first).
+/// Per-lesson difficulty table, grouped by category in navigation order.
 fn print_lessons(p: &CollectionProfile) {
     use crate::profile::TopicStats;
     if p.by_lesson.is_empty() {
         return;
     }
-    let cp = |t: &TopicStats| {
-        if t.combined_cardplay_n > 0 {
-            t.combined_cardplay_sum as f64 / t.combined_cardplay_n as f64
-        } else {
-            -1.0
-        }
-    };
     let fmt = |sum: usize, n: usize| {
         if n > 0 {
             format!("{:.1}", sum as f64 / n as f64)
@@ -199,15 +192,15 @@ fn print_lessons(p: &CollectionProfile) {
             "  -".to_string()
         }
     };
-    println!("  lessons by category (hardest cardplay first):");
+    println!("  lessons by category (navigation order):");
     println!(
         "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
         "lesson", "deals", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid", "topic"
     );
 
-    let mut cats: Vec<(&String, &TopicStats)> = p.by_category.iter().collect();
-    cats.sort_by(|a, b| cp(b.1).partial_cmp(&cp(a.1)).unwrap());
-    for (cat, roll) in cats {
+    // Categories alphabetical/hierarchical (BTreeMap = sorted keys); lessons in
+    // full-path order within each.
+    for (cat, roll) in p.by_category.iter() {
         println!(
             "  ▸ {}  ({} deals, cp {}, bid {})",
             cat,
@@ -215,11 +208,8 @@ fn print_lessons(p: &CollectionProfile) {
             fmt(roll.combined_cardplay_sum, roll.combined_cardplay_n),
             fmt(roll.combined_bidding_sum, roll.combined_bidding_n),
         );
-        let mut rows: Vec<(&String, &TopicStats)> =
+        let rows: Vec<(&String, &TopicStats)> =
             p.by_lesson.iter().filter(|(_, t)| &t.category == cat).collect();
-        rows.sort_by(|a, b| {
-            cp(b.1).partial_cmp(&cp(a.1)).unwrap().then(b.1.deal_count.cmp(&a.1.deal_count))
-        });
         for (lesson, t) in rows {
             println!(
                 "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",

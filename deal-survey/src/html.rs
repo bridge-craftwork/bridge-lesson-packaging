@@ -110,7 +110,7 @@ fn collection_section(h: &mut String, p: &CollectionProfile) {
         h.push_str("<h3>By topic</h3>\n");
         breakdown_table(h, topics, true);
     }
-    h.push_str("<h3>By lesson <span class=\"sub\">(grouped by category, hardest first)</span></h3>\n");
+    h.push_str("<h3>By lesson <span class=\"sub\">(grouped by category, in navigation order)</span></h3>\n");
     lessons_by_category(h, p);
 }
 
@@ -126,11 +126,9 @@ fn lessons_by_category(h: &mut String, p: &CollectionProfile) {
     }
     h.push_str("</tr></thead>\n<tbody>\n");
 
-    // Categories ordered hardest first (by the category rollup's cardplay).
-    let mut cats: Vec<(&String, &TopicStats)> = p.by_category.iter().collect();
-    cats.sort_by(|a, b| ckey(b.1).partial_cmp(&ckey(a.1)).unwrap());
-
-    for (cat, roll) in cats {
+    // Categories in alphabetical/hierarchical order (numbered prefixes sort as
+    // the 1…N navigation order); BTreeMap already yields sorted keys.
+    for (cat, roll) in p.by_category.iter() {
         // Category rollup row.
         let _ = write!(
             h,
@@ -142,12 +140,12 @@ fn lessons_by_category(h: &mut String, p: &CollectionProfile) {
         h.push_str("<td></td></tr>\n");
 
         // Lessons in this category, hardest first.
-        let mut rows: Vec<(&String, &TopicStats)> = p
+        // Lessons in hierarchical (full-path) order within the category.
+        let rows: Vec<(&String, &TopicStats)> = p
             .by_lesson
             .iter()
             .filter(|(_, t)| &t.category == cat)
             .collect();
-        rows.sort_by(|a, b| ckey(b.1).partial_cmp(&ckey(a.1)).unwrap().then(b.1.deal_count.cmp(&a.1.deal_count)));
         for (lesson, t) in rows {
             let _ = write!(h, "<tr><td class=\"name indent\">{}</td>", esc(&lesson_label(lesson)));
             cell_int(h, t.deal_count);
@@ -166,25 +164,9 @@ fn lessons_by_category(h: &mut String, p: &CollectionProfile) {
     h.push_str("</tbody>\n</table>\n");
 }
 
-/// Sort key: combined cardplay mean (–1 when none, so empty sinks).
-fn ckey(t: &TopicStats) -> f64 {
-    cmean(t.combined_cardplay_sum, t.combined_cardplay_n)
-}
-
-/// Shared table for by-topic / by-lesson (rows sorted hardest cardplay first).
+/// Shared table for by-topic (rows in alphabetical topic order via BTreeMap).
 fn breakdown_table(h: &mut String, map: &BTreeMap<String, TopicStats>, is_topic: bool) {
-    let mut rows: Vec<(&String, &TopicStats)> = map.iter().collect();
-    rows.sort_by(|x, y| {
-        cmean(y.1.combined_cardplay_sum, y.1.combined_cardplay_n)
-            .partial_cmp(&cmean(x.1.combined_cardplay_sum, x.1.combined_cardplay_n))
-            .unwrap()
-            .then(
-                cmean(y.1.combined_bidding_sum, y.1.combined_bidding_n)
-                    .partial_cmp(&cmean(x.1.combined_bidding_sum, x.1.combined_bidding_n))
-                    .unwrap(),
-            )
-            .then(y.1.deal_count.cmp(&x.1.deal_count))
-    });
+    let rows: Vec<(&String, &TopicStats)> = map.iter().collect();
 
     h.push_str("<table class=\"grid\">\n<thead><tr>");
     let first = if is_topic { "topic" } else { "lesson" };
@@ -261,13 +243,6 @@ fn pct_str(n: usize, d: usize) -> String {
         "–".to_string()
     } else {
         format!("{:.0}%", 100.0 * n as f64 / d as f64)
-    }
-}
-fn cmean(sum: usize, n: usize) -> f64 {
-    if n > 0 {
-        sum as f64 / n as f64
-    } else {
-        -1.0
     }
 }
 fn lesson_label(path: &str) -> String {
