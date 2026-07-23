@@ -162,7 +162,11 @@ impl Probe for Ruff {
         let pl = ctx.deal.hand(partner).suit_length(trump);
         // Ruffing tricks come from the SHORT trump hand; relocate its lowest
         // trump to the long hand (partner) and see if the contract still makes.
-        let (short, long) = if dl <= pl { (decl, partner) } else { (partner, decl) };
+        let (short, long) = if dl <= pl {
+            (decl, partner)
+        } else {
+            (partner, decl)
+        };
         let short_trumps = ctx.deal.hand(short).cards_in_suit(trump);
         if short_trumps.is_empty() {
             return vec![];
@@ -215,7 +219,11 @@ fn verdict_on_flip(name: &str, ctx: &ProbeContext, solved: &[Solved]) -> ProbeRe
     ProbeRecord {
         name: name.to_string(),
         fired,
-        evidence: if fired { json!({ "flips": flips }) } else { json!({}) },
+        evidence: if fired {
+            json!({ "flips": flips })
+        } else {
+            json!({})
+        },
     }
 }
 
@@ -239,7 +247,10 @@ fn remove_one(v: &mut Vec<Card>, c: Card) {
 }
 
 fn lowest(cards: &[Card]) -> &Card {
-    cards.iter().min_by_key(|c| c.rank as u8).expect("non-empty")
+    cards
+        .iter()
+        .min_by_key(|c| c.rank as u8)
+        .expect("non-empty")
 }
 
 fn partner_of(d: Direction) -> Direction {

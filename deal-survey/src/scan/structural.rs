@@ -12,8 +12,18 @@ use bridge_types::{Auction, Board, Call, Direction, Strain};
 /// `extra_tags`, but are *not* collection-specific — excluded from the custom
 /// tag inventory so it reflects genuine authoring tags (SkillPath, Difficulty…).
 const NON_CUSTOM_EXTRA_TAGS: &[&str] = &[
-    "Scoring", "Room", "Round", "Score", "Generator", "Annotator",
-    "OptimumResultTable", "Table", "Stage", "Section", "HomeTeam", "VisitTeam",
+    "Scoring",
+    "Room",
+    "Round",
+    "Score",
+    "Generator",
+    "Annotator",
+    "OptimumResultTable",
+    "Table",
+    "Stage",
+    "Section",
+    "HomeTeam",
+    "VisitTeam",
 ];
 
 /// Derive the stage-1 structural record from a parsed board.

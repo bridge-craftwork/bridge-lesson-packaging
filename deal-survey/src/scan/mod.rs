@@ -183,6 +183,60 @@ fn partner_of(d: Direction) -> Direction {
     }
 }
 
+fn tally(sum: &mut ScanSummary, rec: &DealRecord) {
+    if rec.baseline.is_some() {
+        sum.baselined += 1;
+    }
+    let facts = rec.baseline.as_ref().and_then(|b| b.contract.as_ref());
+    if facts.is_some() {
+        sum.with_contract += 1;
+    }
+    // Difficulty histogram covers makeable contracts only.
+    if facts.map(|f| f.dd_makes).unwrap_or(false) {
+        match rec.cardplay.as_ref().and_then(|c| c.difficulty) {
+            Some(d @ 0..=2) => sum.difficulty[d as usize] += 1,
+            _ => sum.unclassified += 1,
+        }
+    }
+}
+
+fn cached_record(out_dir: &Path, hash: &str) -> Option<DealRecord> {
+    let path = out_dir.join(format!("{hash}.json"));
+    let txt = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<DealRecord>(&txt).ok()
+}
+
+fn is_current_baselined(rec: &DealRecord) -> bool {
+    rec.versions.tool == TOOL_VERSION
+        && rec.versions.ladder == LADDER_VERSION
+        && rec.baseline.is_some()
+}
+
+fn pbn_files(root: &Path) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .filter(|p| {
+            p.extension()
+                .map(|x| x.eq_ignore_ascii_case("pbn"))
+                .unwrap_or(false)
+        })
+        .collect();
+    files.sort(); // deterministic output ordering
+    files
+}
+
+/// One file per record, named by hash, pretty-printed for diffable ledgers.
+fn write_record(out_dir: &Path, record: &DealRecord) -> Result<()> {
+    let path = out_dir.join(format!("{}.json", record.hash));
+    let json = serde_json::to_string_pretty(record)?;
+    std::fs::write(&path, format!("{json}\n"))
+        .with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod calibration {
     use super::analyze;
@@ -232,54 +286,4 @@ mod calibration {
             frac * 100.0
         );
     }
-}
-
-fn tally(sum: &mut ScanSummary, rec: &DealRecord) {
-    if rec.baseline.is_some() {
-        sum.baselined += 1;
-    }
-    let facts = rec.baseline.as_ref().and_then(|b| b.contract.as_ref());
-    if facts.is_some() {
-        sum.with_contract += 1;
-    }
-    // Difficulty histogram covers makeable contracts only.
-    if facts.map(|f| f.dd_makes).unwrap_or(false) {
-        match rec.cardplay.as_ref().and_then(|c| c.difficulty) {
-            Some(d @ 0..=2) => sum.difficulty[d as usize] += 1,
-            _ => sum.unclassified += 1,
-        }
-    }
-}
-
-fn cached_record(out_dir: &Path, hash: &str) -> Option<DealRecord> {
-    let path = out_dir.join(format!("{hash}.json"));
-    let txt = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str::<DealRecord>(&txt).ok()
-}
-
-fn is_current_baselined(rec: &DealRecord) -> bool {
-    rec.versions.tool == TOOL_VERSION
-        && rec.versions.ladder == LADDER_VERSION
-        && rec.baseline.is_some()
-}
-
-fn pbn_files(root: &Path) -> Vec<PathBuf> {
-    let mut files: Vec<PathBuf> = WalkDir::new(root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.into_path())
-        .filter(|p| p.extension().map(|x| x.eq_ignore_ascii_case("pbn")).unwrap_or(false))
-        .collect();
-    files.sort(); // deterministic output ordering
-    files
-}
-
-/// One file per record, named by hash, pretty-printed for diffable ledgers.
-fn write_record(out_dir: &Path, record: &DealRecord) -> Result<()> {
-    let path = out_dir.join(format!("{}.json", record.hash));
-    let json = serde_json::to_string_pretty(record)?;
-    std::fs::write(&path, format!("{json}\n"))
-        .with_context(|| format!("writing {}", path.display()))?;
-    Ok(())
 }

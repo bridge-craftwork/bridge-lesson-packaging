@@ -29,7 +29,12 @@ pub fn render(profiles: &[CollectionProfile]) -> String {
     h.push_str("<section id=\"summary\" class=\"tab active\">\n");
     summary_table(&mut h, profiles);
     for p in profiles {
-        let _ = write!(h, "<h2>{} <span class=\"sub\">({} deals)</span></h2>\n", esc(&p.collection), p.deal_count);
+        let _ = writeln!(
+            h,
+            "<h2>{} <span class=\"sub\">({} deals)</span></h2>",
+            esc(&p.collection),
+            p.deal_count
+        );
         summary_lessons(&mut h, p);
     }
     h.push_str("</section>\n");
@@ -82,7 +87,22 @@ fn summary_table(h: &mut String, profiles: &[CollectionProfile]) {
     h.push_str("<h2>Collections</h2>\n");
     h.push_str("<p class=\"note\">The two coloured columns are the overall combined difficulty (mean over the collection), green → red.</p>\n");
     h.push_str("<table class=\"grid\">\n<thead><tr>");
-    for c in ["collection", "deals", "Auction", "Play", "makeable", "L0", "L1", "L2", "uncl", "auction%", "commentary", "expl. contract", "finesse", "ruff"] {
+    for c in [
+        "collection",
+        "deals",
+        "Auction",
+        "Play",
+        "makeable",
+        "L0",
+        "L1",
+        "L2",
+        "uncl",
+        "auction%",
+        "commentary",
+        "expl. contract",
+        "finesse",
+        "ruff",
+    ] {
         let _ = write!(h, "<th>{}</th>", esc(c));
     }
     h.push_str("</tr></thead>\n<tbody>\n");
@@ -116,7 +136,12 @@ fn summary_table(h: &mut String, profiles: &[CollectionProfile]) {
 }
 
 fn collection_section(h: &mut String, p: &CollectionProfile) {
-    let _ = write!(h, "<h2>{} <span class=\"sub\">({} deals)</span></h2>\n", esc(&p.collection), p.deal_count);
+    let _ = writeln!(
+        h,
+        "<h2>{} <span class=\"sub\">({} deals)</span></h2>",
+        esc(&p.collection),
+        p.deal_count
+    );
 
     // Coverage / auction proxies / mix.
     let d = &p.difficulty;
@@ -172,7 +197,10 @@ fn lessons_by_category(h: &mut String, p: &CollectionProfile) {
         return;
     }
     h.push_str("<table class=\"grid\">\n<thead><tr>");
-    for c in ["lesson", "deals", "base b", "base cp", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid", "topic"] {
+    for c in [
+        "lesson", "deals", "base b", "base cp", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid",
+        "topic",
+    ] {
         let _ = write!(h, "<th>{}</th>", esc(c));
     }
     h.push_str("</tr></thead>\n<tbody>\n");
@@ -221,7 +249,9 @@ fn breakdown_table(h: &mut String, map: &BTreeMap<String, TopicStats>, is_topic:
 
     h.push_str("<table class=\"grid\">\n<thead><tr>");
     let first = if is_topic { "topic" } else { "lesson" };
-    let mut heads = vec![first, "deals", "base b", "base cp", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid"];
+    let mut heads = vec![
+        first, "deals", "base b", "base cp", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid",
+    ];
     if !is_topic {
         heads.push("topic");
     }
@@ -257,7 +287,11 @@ fn cell_pct(h: &mut String, n: usize, d: usize) {
     let _ = write!(h, "<td class=\"num\">{}</td>", pct_str(n, d));
 }
 fn cell_base(h: &mut String, v: u8) {
-    let _ = write!(h, "<td class=\"num heat\" style=\"{}\">{v}</td>", heat(v as f64));
+    let _ = write!(
+        h,
+        "<td class=\"num heat\" style=\"{}\">{v}</td>",
+        heat(v as f64)
+    );
 }
 /// A combined-score cell, heat-coloured on the 0–5 scale.
 fn cell_comb(h: &mut String, sum: usize, n: usize) {
@@ -265,7 +299,11 @@ fn cell_comb(h: &mut String, sum: usize, n: usize) {
         h.push_str("<td class=\"num\">–</td>");
     } else {
         let m = sum as f64 / n as f64;
-        let _ = write!(h, "<td class=\"num heat\" style=\"{}\">{m:.1}</td>", heat(m));
+        let _ = write!(
+            h,
+            "<td class=\"num heat\" style=\"{}\">{m:.1}</td>",
+            heat(m)
+        );
     }
 }
 
@@ -280,8 +318,16 @@ fn dist_line(h: &mut String, label: &str, map: &BTreeMap<String, usize>) {
     if map.is_empty() {
         return;
     }
-    let parts: Vec<String> = map.iter().map(|(k, v)| format!("{}:{}", esc(k), v)).collect();
-    let _ = write!(h, "<p class=\"dist\"><strong>{}</strong> {}</p>\n", esc(label), parts.join("  "));
+    let parts: Vec<String> = map
+        .iter()
+        .map(|(k, v)| format!("{}:{}", esc(k), v))
+        .collect();
+    let _ = writeln!(
+        h,
+        "<p class=\"dist\"><strong>{}</strong> {}</p>",
+        esc(label),
+        parts.join("  ")
+    );
 }
 
 fn makeable(p: &CollectionProfile) -> usize {
@@ -296,7 +342,10 @@ fn pct_str(n: usize, d: usize) -> String {
     }
 }
 fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 const STYLE: &str = r#"<style>
