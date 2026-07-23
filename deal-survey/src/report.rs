@@ -49,10 +49,9 @@ fn load(path: &Path) -> Result<Vec<CollectionProfile>> {
     paths.sort();
     let mut out = Vec::new();
     for p in paths {
-        let txt = std::fs::read_to_string(&p).with_context(|| format!("reading {}", p.display()))?;
-        out.push(
-            serde_json::from_str(&txt).with_context(|| format!("parsing {}", p.display()))?,
-        );
+        let txt =
+            std::fs::read_to_string(&p).with_context(|| format!("reading {}", p.display()))?;
+        out.push(serde_json::from_str(&txt).with_context(|| format!("parsing {}", p.display()))?);
     }
     Ok(out)
 }
@@ -75,7 +74,18 @@ fn pct(n: usize, d: usize) -> String {
 fn print_table(profiles: &[CollectionProfile]) {
     println!(
         "{:<24} {:>6} {:>5} | {:>5} {:>5} {:>5} {:>5} | {:>5} {:>5} {:>5} | {:>5} {:>5}",
-        "collection", "deals", "mkbl", "L0", "L1", "L2", "uncl", "auc", "cmt", "xcon", "fin", "ruff"
+        "collection",
+        "deals",
+        "mkbl",
+        "L0",
+        "L1",
+        "L2",
+        "uncl",
+        "auc",
+        "cmt",
+        "xcon",
+        "fin",
+        "ruff"
     );
     println!("{}", "-".repeat(100));
     for p in profiles {
@@ -194,8 +204,8 @@ fn print_lessons(p: &CollectionProfile) {
     };
     println!("  lessons by category (navigation order):");
     println!(
-        "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
-        "lesson", "deals", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid", "topic"
+        "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  topic",
+        "lesson", "deals", "L0", "L1", "L2", "n-mk", "comb-cp", "comb-bid"
     );
 
     // Categories alphabetical/hierarchical (BTreeMap = sorted keys); lessons in
@@ -208,8 +218,11 @@ fn print_lessons(p: &CollectionProfile) {
             fmt(roll.combined_cardplay_sum, roll.combined_cardplay_n),
             fmt(roll.combined_bidding_sum, roll.combined_bidding_n),
         );
-        let rows: Vec<(&String, &TopicStats)> =
-            p.by_lesson.iter().filter(|(_, t)| &t.category == cat).collect();
+        let rows: Vec<(&String, &TopicStats)> = p
+            .by_lesson
+            .iter()
+            .filter(|(_, t)| &t.category == cat)
+            .collect();
         for (_, t) in rows {
             println!(
                 "    {:<34} {:>5} | {:>4} {:>4} {:>4} {:>5} | {:>7} {:>7}  {}",
@@ -226,7 +239,6 @@ fn print_lessons(p: &CollectionProfile) {
         }
     }
 }
-
 
 fn print_dist(label: &str, map: &std::collections::BTreeMap<String, usize>) {
     if map.is_empty() {

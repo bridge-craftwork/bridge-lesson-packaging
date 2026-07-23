@@ -49,7 +49,10 @@ impl Topics {
             if t.matches.iter().any(|m| hay.contains(&m.to_lowercase())) {
                 return (
                     t.name.clone(),
-                    Baseline { bidding: t.bidding, cardplay: t.cardplay },
+                    Baseline {
+                        bidding: t.bidding,
+                        cardplay: t.cardplay,
+                    },
                 );
             }
         }

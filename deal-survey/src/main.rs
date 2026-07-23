@@ -60,7 +60,10 @@ enum Command {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Scan { collection_dir, out } => {
+        Command::Scan {
+            collection_dir,
+            out,
+        } => {
             let s = scan::scan_collection(&collection_dir, &out)?;
             eprintln!(
                 "deal-survey: {} deal(s) from {} → {}",
@@ -79,7 +82,12 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
-        Command::Profile { records, out, editorial, topics } => {
+        Command::Profile {
+            records,
+            out,
+            editorial,
+            topics,
+        } => {
             let p = profile::build_from_dir(&records, editorial.as_deref(), topics.as_deref())?;
             let path = profile::write(&out, &p)?;
             eprintln!(

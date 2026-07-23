@@ -154,8 +154,8 @@ pub fn build_from_dir(
     for path in entries {
         let txt = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let rec: DealRecord = serde_json::from_str(&txt)
-            .with_context(|| format!("parsing {}", path.display()))?;
+        let rec: DealRecord =
+            serde_json::from_str(&txt).with_context(|| format!("parsing {}", path.display()))?;
         records.push(rec);
     }
     if records.is_empty() {
@@ -261,7 +261,10 @@ pub fn build(
         if s.commentary.present {
             structural.with_commentary += 1;
         }
-        if matches!(s.contract_provenance, crate::model::ContractProvenance::Explicit) {
+        if matches!(
+            s.contract_provenance,
+            crate::model::ContractProvenance::Explicit
+        ) {
             structural.with_explicit_contract += 1;
         }
         for tag in &s.custom_tags {
@@ -277,7 +280,10 @@ pub fn build(
                     if let Some((level, strain, declarer)) = parse_contract(&facts.contract) {
                         *contract_mix.by_strain.entry(strain).or_default() += 1;
                         *contract_mix.by_level.entry(level.to_string()).or_default() += 1;
-                        *contract_mix.by_declarer.entry(declarer.to_string()).or_default() += 1;
+                        *contract_mix
+                            .by_declarer
+                            .entry(declarer.to_string())
+                            .or_default() += 1;
                     }
                     if !facts.dd_makes {
                         difficulty.not_makeable += 1;
@@ -350,7 +356,8 @@ fn accumulate(st: &mut TopicStats, rec: &DealRecord, base: crate::topics::Baseli
             Some(level @ 0..=2) => {
                 st.observed_cardplay[level as usize] += 1;
                 // Combined cardplay = baseline nudged ±1 by the observed ladder.
-                st.combined_cardplay_sum += (base.cardplay as i32 + level as i32 - 1).max(0) as usize;
+                st.combined_cardplay_sum +=
+                    (base.cardplay as i32 + level as i32 - 1).max(0) as usize;
                 st.combined_cardplay_n += 1;
             }
             _ => st.observed_unclassified += 1,
@@ -414,13 +421,23 @@ fn is_view_or_set(f: &str) -> bool {
 /// Clean a filename into a lesson label: strip packaging prefixes/suffixes and
 /// trailing slice ranges ("1-6") / set sizes ("6x6") / "Nonstandard".
 fn normalize_lesson_name(filename: &str) -> String {
-    let mut s = filename.strip_suffix(".pbn").unwrap_or(filename).to_string();
+    let mut s = filename
+        .strip_suffix(".pbn")
+        .unwrap_or(filename)
+        .to_string();
     for p in ["thinking-bridge-", "Baker Bridge "] {
         if let Some(r) = s.strip_prefix(p) {
             s = r.to_string();
         }
     }
-    for suf in [" practice deals", " - NESW", " - NES", " - NS", " - S", " Nonstandard"] {
+    for suf in [
+        " practice deals",
+        " - NESW",
+        " - NES",
+        " - NS",
+        " - S",
+        " Nonstandard",
+    ] {
         if let Some(r) = s.strip_suffix(suf) {
             s = r.to_string();
         }
@@ -462,7 +479,11 @@ fn two_numbers(t: &str, sep: char) -> bool {
 fn parse_contract(display: &str) -> Option<(u8, String, char)> {
     let (contract, decl) = display.split_once(" by ")?;
     let parsed = bridge_types::Contract::parse(contract)?;
-    Some((parsed.level, strain_label(parsed.strain), decl.chars().next()?))
+    Some((
+        parsed.level,
+        strain_label(parsed.strain),
+        decl.chars().next()?,
+    ))
 }
 
 fn strain_label(s: Strain) -> String {
@@ -478,8 +499,7 @@ fn strain_label(s: Strain) -> String {
 
 /// Write a profile as `<out_dir>/<collection>.json`.
 pub fn write(out_dir: &Path, profile: &CollectionProfile) -> Result<std::path::PathBuf> {
-    std::fs::create_dir_all(out_dir)
-        .with_context(|| format!("creating {}", out_dir.display()))?;
+    std::fs::create_dir_all(out_dir).with_context(|| format!("creating {}", out_dir.display()))?;
     let name = sanitize(&profile.collection);
     let path = out_dir.join(format!("{name}.json"));
     let json = serde_json::to_string_pretty(profile)?;
@@ -490,7 +510,13 @@ pub fn write(out_dir: &Path, profile: &CollectionProfile) -> Result<std::path::P
 
 fn sanitize(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 
@@ -502,7 +528,12 @@ mod tests {
     fn rec(difficulty: Option<u8>, dd_makes: bool, fired: &[&str], contract: &str) -> DealRecord {
         DealRecord {
             hash: "h".into(),
-            source: Source { collection: "Test".into(), file: "f.pbn".into(), board: Some(1), category: "cat".into() },
+            source: Source {
+                collection: "Test".into(),
+                file: "f.pbn".into(),
+                board: Some(1),
+                category: "cat".into(),
+            },
             structural: Structural {
                 contract: Some(contract.split_whitespace().next().unwrap().to_string()),
                 contract_provenance: ContractProvenance::Explicit,
@@ -515,11 +546,16 @@ mod tests {
                     high_bids: 0,
                 },
                 play: false,
-                commentary: Commentary { present: true, style: Some("inline".into()) },
+                commentary: Commentary {
+                    present: true,
+                    style: Some("inline".into()),
+                },
                 custom_tags: vec!["SkillPath".into()],
             },
             baseline: Some(Baseline {
-                dd_table: DdTable { tricks: [[0; 5]; 4] },
+                dd_table: DdTable {
+                    tricks: [[0; 5]; 4],
+                },
                 par: None,
                 contract: Some(ContractFacts {
                     contract: contract.into(),
@@ -531,10 +567,18 @@ mod tests {
                     declarer_seat_sensitive: false,
                 }),
             }),
-            cardplay: Some(Cardplay { immediate_winners: 5, required: 10, difficulty }),
+            cardplay: Some(Cardplay {
+                immediate_winners: 5,
+                required: 10,
+                difficulty,
+            }),
             probes: fired
                 .iter()
-                .map(|n| ProbeRecord { name: n.to_string(), fired: true, evidence: serde_json::json!({}) })
+                .map(|n| ProbeRecord {
+                    name: n.to_string(),
+                    fired: true,
+                    evidence: serde_json::json!({}),
+                })
                 .collect(),
             versions: Versions::current(),
         }
