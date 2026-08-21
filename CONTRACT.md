@@ -46,6 +46,8 @@ app-specific processing belong to the collection, not here.
 | `declarerPlan` | emit declarer's-plan sheet(s); layouts: `2up`, `1up` | `2up` |
 | `lin` | also emit LIN files for online play | off |
 | `studentSeat` | the single-student seat for the `South` view | `S` |
+| `groupDir` | subfolder of per-lesson PBNs naming the collection's own board groupings | *(off)* |
+| `aggregateAll` | sort the `All/` view into table-view subfolders, like a sliced set | off |
 
 **No collection identity, source, license, or repo name is part of this config** — those are
 the collection's concern, not the toolset's.
@@ -86,6 +88,31 @@ For a lesson of *B* boards:
   number (e.g. `(B hands)` or a plain `practice deals` label per `namePrefix` style).
 - When `setSizes` has more than one size, the lesson is emitted once per size, each under its
   own `{S}-Board Sets/` folder.
+
+### Collection-defined groups
+
+Size-based slicing answers "what does one table play in a session". It cannot express a
+grouping the *collection* already has — a book's chapters, a course's weeks, a syllabus
+order — because those boundaries are uneven and carry meaning the toolset has no way to
+infer.
+
+`groupDir` is the escape hatch, and it keeps the toolset collection-agnostic. A lesson's
+input folder may contain a subfolder of PBNs (e.g. `Chapters/`); each becomes its own
+packaged folder, treated exactly like `All/` — rotated to every view in `tables`, with
+PDFs and optional LIN, but no block-replication or merged handouts, since a group is a
+reading/reference set rather than a table session. The collection decides what a group
+*is* and produces the PBNs; the toolset only packages what it finds.
+
+```
+{Lesson}/
+  All/            <view>/     the whole lesson
+  Chapters/                   groupDir
+    {group}/      <view>/     one folder per group PBN
+  {S}-Board Sets/ <view>/     the size-based teaching sets
+```
+
+A lesson's `groupDir` is part of that lesson, not a lesson of its own — folder discovery
+must ignore it, or a lesson that has one stops looking like a leaf.
 
 ### Table views
 
@@ -140,4 +167,8 @@ worked config.
 2. `manifest.json` per collection (lesson → category, board count, set sizes, artifact paths)
    for completeness verification. Deferred; the directory structure is the v1 contract.
 3. Exact component ordering + which components are merged into Handouts vs shipped standalone.
-4. Standard set-label wording for single-set vs sliced lessons.
+4. Standard set-label wording for single-set vs sliced lessons. (`groupDir`, added for
+   collection-defined groupings, is a partial answer: named groups sit alongside the
+   size-based sets rather than competing with them for the set label.)
+5. Whether `aggregateAll` should become the default once existing collections' committed
+   output trees can absorb the reshaping.

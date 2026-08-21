@@ -57,6 +57,14 @@ OUTPUT_DIR="${OUTPUT_DIR:-Rotations}"         # packaged output tree
 ROTATE_PATTERNS="${ROTATE_PATTERNS:-S,NS,NESW}"   # views to emit (in-person NESW + online S/NS)
 DECLARER_PLAN_CATEGORY="${DECLARER_PLAN_CATEGORY:-Declarer Play}"  # only these get a declarer's plan
 LIN="${LIN:-0}"                              # 1 = also emit LIN files for online play
+# Named board groupings a collection supplies itself (e.g. a book's chapters), as a
+# subfolder of PBNs inside each lesson's input folder. Each becomes its own packaged
+# folder, treated exactly like All/. Empty = feature off. See CONTRACT.md.
+GROUP_DIR="${GROUP_DIR:-}"
+# 1 = also sort All/ into Full Table / North-South / South, like the sliced sets.
+# Default off: existing collections have committed output trees (and, in Baker's
+# case, a documented rotations contract) that expect All/ to stay flat.
+AGGREGATE_ALL="${AGGREGATE_ALL:-0}"
 
 # Tool paths
 BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-$HOME/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
@@ -247,8 +255,23 @@ filter_folders() {
     # Find leaf folders (folders with no subdirectories)
     local -a leaf_folders=()
     while IFS= read -r -d '' dir; do
-        # Check if this is a leaf folder (no subdirectories)
-        if [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)" ]]; then
+        # A lesson's GROUP_DIR is part of that lesson, not a lesson in its own right:
+        # never offer it (or anything inside it) as a candidate, and don't let its
+        # presence stop the parent from counting as a leaf.
+        if [[ -n "$GROUP_DIR" ]] && \
+           [[ "$dir" == */"$GROUP_DIR" || "$dir" == */"$GROUP_DIR"/* ]]; then
+            continue
+        fi
+
+        local -a subdirs=()
+        while IFS= read -r -d '' sub; do
+            if [[ -n "$GROUP_DIR" && "$(basename "$sub")" == "$GROUP_DIR" ]]; then
+                continue
+            fi
+            subdirs+=("$sub")
+        done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+
+        if [[ ${#subdirs[@]} -eq 0 ]]; then
             leaf_folders+=("$dir")
         fi
     done < <(find "$base_dir" -type d -print0 2>/dev/null)
@@ -273,6 +296,17 @@ filter_folders() {
     done
 
     printf '%s\n' "${result[@]}" | sort
+}
+
+# Echo each of a lesson's group folders (one per group PBN), newline separated.
+# Silent when GROUP_DIR is unset or the lesson has no groups.
+group_folders() {
+    local folder="$1"
+    [[ -n "$GROUP_DIR" && -d "$folder/$GROUP_DIR" ]] || return 0
+    local g
+    for g in "$folder/$GROUP_DIR"/*/; do
+        [[ -d "$g" ]] && echo "${g%/}"
+    done
 }
 
 # Count boards in a PBN file
@@ -329,6 +363,18 @@ action_copy_presentation() {
         cp "$pbn" "$dst/"
         trace "Copied: $(basename "$pbn")"
     done
+
+    # Copy the lesson's group PBNs, each into a folder of its own, so that every
+    # downstream action can treat a group exactly the way it treats All/.
+    if [[ -n "$GROUP_DIR" && -d "$src/$GROUP_DIR" ]]; then
+        for pbn in "$src/$GROUP_DIR"/*.pbn; do
+            [[ -f "$pbn" ]] || continue
+            local gname=$(basename "$pbn" .pbn)
+            mkdir -p "$dst/$GROUP_DIR/$gname"
+            cp "$pbn" "$dst/$GROUP_DIR/$gname/"
+            trace "Copied group: $GROUP_DIR/$gname"
+        done
+    fi
 
     # Copy .pdf files that don't have matching .pbn files
     for pdf in "$src"/*.pdf; do
@@ -509,6 +555,10 @@ action_rotate_hands() {
     if [[ -d "$folder/All" ]]; then
         folders_to_process+=("$folder/All")
     fi
+
+    while IFS= read -r group_folder; do
+        [[ -n "$group_folder" ]] && folders_to_process+=("$group_folder")
+    done < <(group_folders "$folder")
 
     for slice in "${slices[@]}"; do
         local slice_folder="$folder/$slice-Board Sets"
@@ -691,26 +741,15 @@ action_bidding_sheets() {
 #---------------------------------------------------
 # Action: aggregate
 #---------------------------------------------------
-action_aggregate() {
-    local file="$1"
-    shift
-    local slices=("$@")
-
-    trace "Executing aggregate for: $file with slices: ${slices[*]}"
-
-    local folder="$OUTPUT_DIR/$file"
-
-    if [[ ! -d "$folder" ]]; then
-        warn "Folder not found: $folder"
-        return
-    fi
-
-    for slice in "${slices[@]}"; do
-        local bs_folder="$folder/$slice-Board Sets"
+# Sort one folder of rotated files into Full Table / North-South / South and tidy
+# the names. Generic on its argument: used for the slice folders, for All/, and for
+# each group folder (a group is packaged exactly like All/).
+aggregate_folder() {
+        local bs_folder="$1"
 
         if [[ ! -d "$bs_folder" ]]; then
-            trace "Skipping missing board set folder: $bs_folder"
-            continue
+            trace "Skipping missing folder: $bs_folder"
+            return
         fi
 
         trace "Aggregating in: $bs_folder"
@@ -783,12 +822,43 @@ action_aggregate() {
             fi
         done
 
-        # Delete original slice-level .pbn files (those with "hands).pbn")
+        # Delete the unrotated source PBN (those with "hands).pbn"); the rotated
+        # per-view copies remain, and the full lesson PBN sits at the lesson root.
         for f in "$bs_folder"/*hands\).pbn; do
             [[ -f "$f" ]] || continue
             trace "Deleting: $f"
             rm "$f"
         done
+}
+
+action_aggregate() {
+    local file="$1"
+    shift
+    local slices=("$@")
+
+    trace "Executing aggregate for: $file with slices: ${slices[*]}"
+
+    local folder="$OUTPUT_DIR/$file"
+
+    if [[ ! -d "$folder" ]]; then
+        warn "Folder not found: $folder"
+        return
+    fi
+
+    local -a targets=()
+    [[ "$AGGREGATE_ALL" == "1" && -d "$folder/All" ]] && targets+=("$folder/All")
+    # Group folders are always aggregated: they exist only when a collection opts in
+    # to GROUP_DIR, so there is no established output shape to preserve.
+    while IFS= read -r group_folder; do
+        [[ -n "$group_folder" ]] && targets+=("$group_folder")
+    done < <(group_folders "$folder")
+    for slice in "${slices[@]}"; do
+        targets+=("$folder/$slice-Board Sets")
+    done
+
+    local target
+    for target in "${targets[@]}"; do
+        aggregate_folder "$target"
     done
 }
 
@@ -870,6 +940,9 @@ action_lin() {
     [[ -d "$folder" ]] || { warn "Folder not found: $folder"; return; }
     local -a targets=()
     [[ -d "$folder/All" ]] && targets+=("$folder/All")
+    while IFS= read -r group_folder; do
+        [[ -n "$group_folder" ]] && targets+=("$group_folder")
+    done < <(group_folders "$folder")
     for slice in "${slices[@]}"; do
         [[ -d "$folder/$slice-Board Sets" ]] && targets+=("$folder/$slice-Board Sets")
     done
