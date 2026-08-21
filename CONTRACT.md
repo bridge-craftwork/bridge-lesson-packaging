@@ -48,6 +48,7 @@ app-specific processing belong to the collection, not here.
 | `studentSeat` | the single-student seat for the `South` view | `S` |
 | `groupDir` | subfolder of per-lesson PBNs naming the collection's own board groupings | *(off)* |
 | `aggregateAll` | sort the `All/` view into table-view subfolders, like a sliced set | off |
+| `allDirName` | name of the whole-lesson folder; `{boards}` expands to its board count | `All` |
 
 **No collection identity, source, license, or repo name is part of this config** — those are
 the collection's concern, not the toolset's.

@@ -65,6 +65,10 @@ GROUP_DIR="${GROUP_DIR:-}"
 # Default off: existing collections have committed output trees (and, in Baker's
 # case, a documented rotations contract) that expect All/ to stay flat.
 AGGREGATE_ALL="${AGGREGATE_ALL:-0}"
+# Name of the unsliced "whole lesson" folder. May contain the placeholder {boards},
+# replaced with that lesson's board count (e.g. "All {boards} boards" -> "All 48 boards").
+# Defaults to the plain "All" the existing collections' output trees expect.
+ALL_DIR_NAME="${ALL_DIR_NAME:-All}"
 
 # Tool paths
 BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-$HOME/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
@@ -298,6 +302,22 @@ filter_folders() {
     printf '%s\n' "${result[@]}" | sort
 }
 
+# Resolve ALL_DIR_NAME for one lesson, filling in {boards} from its board count.
+all_dir_name() {
+    local folder="$1"
+    local name="$ALL_DIR_NAME"
+
+    if [[ "$name" == *"{boards}"* ]]; then
+        local pbn
+        pbn=$(find "$folder" -maxdepth 1 -name "*.pbn" -type f | head -1)
+        local n=0
+        [[ -n "$pbn" ]] && n=$(get_hand_count "$pbn")
+        name="${name//\{boards\}/$n}"
+    fi
+
+    echo "$name"
+}
+
 # Echo each of a lesson's group folders (one per group PBN), newline separated.
 # Silent when GROUP_DIR is unset or the lesson has no groups.
 group_folders() {
@@ -453,7 +473,7 @@ action_slice_deals() {
     trace "Found $total_boards boards"
 
     # Create All folder and copy with hand count in name
-    local all_folder="$folder/All"
+    local all_folder="$folder/$(all_dir_name "$folder")"
     mkdir -p "$all_folder"
 
     local new_name="$base_name ($total_boards hands).pbn"
@@ -552,8 +572,9 @@ action_rotate_hands() {
     # Build list of folders to process: All + each slice folder
     local -a folders_to_process=()
 
-    if [[ -d "$folder/All" ]]; then
-        folders_to_process+=("$folder/All")
+    local all_folder="$folder/$(all_dir_name "$folder")"
+    if [[ -d "$all_folder" ]]; then
+        folders_to_process+=("$all_folder")
     fi
 
     while IFS= read -r group_folder; do
@@ -846,7 +867,8 @@ action_aggregate() {
     fi
 
     local -a targets=()
-    [[ "$AGGREGATE_ALL" == "1" && -d "$folder/All" ]] && targets+=("$folder/All")
+    local all_folder="$folder/$(all_dir_name "$folder")"
+    [[ "$AGGREGATE_ALL" == "1" && -d "$all_folder" ]] && targets+=("$all_folder")
     # Group folders are always aggregated: they exist only when a collection opts in
     # to GROUP_DIR, so there is no established output shape to preserve.
     while IFS= read -r group_folder; do
@@ -939,7 +961,8 @@ action_lin() {
     local folder="$OUTPUT_DIR/$file"
     [[ -d "$folder" ]] || { warn "Folder not found: $folder"; return; }
     local -a targets=()
-    [[ -d "$folder/All" ]] && targets+=("$folder/All")
+    local all_folder="$folder/$(all_dir_name "$folder")"
+    [[ -d "$all_folder" ]] && targets+=("$all_folder")
     while IFS= read -r group_folder; do
         [[ -n "$group_folder" ]] && targets+=("$group_folder")
     done < <(group_folders "$folder")
