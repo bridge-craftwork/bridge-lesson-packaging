@@ -55,20 +55,15 @@ NC='\033[0m' # No Color
 INPUT_DIR="${INPUT_DIR:-Presentation}"       # clean lesson PBNs, by {category}/{lesson}
 OUTPUT_DIR="${OUTPUT_DIR:-Rotations}"         # packaged output tree
 ROTATE_PATTERNS="${ROTATE_PATTERNS:-S,NS,NESW}"   # views to emit (in-person NESW + online S/NS)
-DECLARER_PLAN_CATEGORY="${DECLARER_PLAN_CATEGORY:-Declarer Play}"  # only these get a declarer's plan
+# Only lessons whose category matches get a declarer's plan. Set to "" for EVERY
+# lesson. Note the "-" (not ":-"): an explicitly empty value must survive as empty,
+# or "" would silently fall back to the default and mean *fewer* lessons, not all.
+DECLARER_PLAN_CATEGORY="${DECLARER_PLAN_CATEGORY-Declarer Play}"
 LIN="${LIN:-0}"                              # 1 = also emit LIN files for online play
 # Named board groupings a collection supplies itself (e.g. a book's chapters), as a
 # subfolder of PBNs inside each lesson's input folder. Each becomes its own packaged
 # folder, treated exactly like All/. Empty = feature off. See CONTRACT.md.
 GROUP_DIR="${GROUP_DIR:-}"
-# 1 = also sort All/ into Full Table / North-South / South, like the sliced sets.
-# Default off: existing collections have committed output trees (and, in Baker's
-# case, a documented rotations contract) that expect All/ to stay flat.
-AGGREGATE_ALL="${AGGREGATE_ALL:-0}"
-# Name of the unsliced "whole lesson" folder. May contain the placeholder {boards},
-# replaced with that lesson's board count (e.g. "All {boards} boards" -> "All 48 boards").
-# Defaults to the plain "All" the existing collections' output trees expect.
-ALL_DIR_NAME="${ALL_DIR_NAME:-All}"
 
 # Tool paths
 BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-$HOME/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
@@ -302,20 +297,15 @@ filter_folders() {
     printf '%s\n' "${result[@]}" | sort
 }
 
-# Resolve ALL_DIR_NAME for one lesson, filling in {boards} from its board count.
+# Name of a lesson's unsliced "whole lesson" folder: "All 48 boards". The count is
+# in the name because lessons vary widely in size, and the folder should say what it
+# holds without being opened. Same shape in every collection -- deliberately not
+# configurable, so no two collections' output trees can drift apart.
 all_dir_name() {
-    local folder="$1"
-    local name="$ALL_DIR_NAME"
-
-    if [[ "$name" == *"{boards}"* ]]; then
-        local pbn
-        pbn=$(find "$folder" -maxdepth 1 -name "*.pbn" -type f | head -1)
-        local n=0
-        [[ -n "$pbn" ]] && n=$(get_hand_count "$pbn")
-        name="${name//\{boards\}/$n}"
-    fi
-
-    echo "$name"
+    local folder="$1" pbn n=0
+    pbn=$(find "$folder" -maxdepth 1 -name "*.pbn" -type f | head -1)
+    [[ -n "$pbn" ]] && n=$(get_hand_count "$pbn")
+    echo "All $n boards"
 }
 
 # Echo each of a lesson's group folders (one per group PBN), newline separated.
@@ -675,7 +665,9 @@ action_block_replicate() {
 # segment of the lesson path; override the match with DECLARER_PLAN_CATEGORY.
 is_declarer_play_lesson() {
     local category="${1%%/*}"
-    [[ "$category" == *"${DECLARER_PLAN_CATEGORY:-Declarer Play}"* ]]
+    # An empty DECLARER_PLAN_CATEGORY means every lesson qualifies.
+    [[ -z "$DECLARER_PLAN_CATEGORY" ]] && return 0
+    [[ "$category" == *"$DECLARER_PLAN_CATEGORY"* ]]
 }
 
 # Action: declarers_plan
@@ -868,9 +860,7 @@ action_aggregate() {
 
     local -a targets=()
     local all_folder="$folder/$(all_dir_name "$folder")"
-    [[ "$AGGREGATE_ALL" == "1" && -d "$all_folder" ]] && targets+=("$all_folder")
-    # Group folders are always aggregated: they exist only when a collection opts in
-    # to GROUP_DIR, so there is no established output shape to preserve.
+    [[ -d "$all_folder" ]] && targets+=("$all_folder")
     while IFS= read -r group_folder; do
         [[ -n "$group_folder" ]] && targets+=("$group_folder")
     done < <(group_folders "$folder")

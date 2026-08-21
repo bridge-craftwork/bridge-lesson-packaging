@@ -44,11 +44,10 @@ app-specific processing belong to the collection, not here.
 | `companionDocs` | glob(s) selecting per-lesson companion PDFs | *(none)* |
 | `mergeComponents` | group per-view PDFs under `Components/` and merge into one Handouts PDF | on |
 | `declarerPlan` | emit declarer's-plan sheet(s); layouts: `2up`, `1up` | `2up` |
+| `declarerPlanCategory` | restrict the plan to matching categories; **empty = every lesson** | *(collection's play category)* |
 | `lin` | also emit LIN files for online play | off |
 | `studentSeat` | the single-student seat for the `South` view | `S` |
 | `groupDir` | subfolder of per-lesson PBNs naming the collection's own board groupings | *(off)* |
-| `aggregateAll` | sort the `All/` view into table-view subfolders, like a sliced set | off |
-| `allDirName` | name of the whole-lesson folder; `{boards}` expands to its board count | `All` |
 
 **No collection identity, source, license, or repo name is part of this config** — those are
 the collection's concern, not the toolset's.
@@ -106,7 +105,7 @@ reading/reference set rather than a table session. The collection decides what a
 
 ```
 {Lesson}/
-  All/            <view>/     the whole lesson
+  All {B} boards/ <view>/     the whole lesson
   Chapters/                   groupDir
     {group}/      <view>/     one folder per group PBN
   {S}-Board Sets/ <view>/     the size-based teaching sets
@@ -171,5 +170,3 @@ worked config.
 4. Standard set-label wording for single-set vs sliced lessons. (`groupDir`, added for
    collection-defined groupings, is a partial answer: named groups sit alongside the
    size-based sets rather than competing with them for the set label.)
-5. Whether `aggregateAll` should become the default once existing collections' committed
-   output trees can absorb the reshaping.
