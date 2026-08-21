@@ -44,6 +44,7 @@ app-specific processing belong to the collection, not here.
 | `companionDocs` | glob(s) selecting per-lesson companion PDFs | *(none)* |
 | `mergeComponents` | group per-view PDFs under `Components/` and merge into one Handouts PDF | on |
 | `declarerPlan` | emit declarer's-plan sheet(s); layouts: `2up`, `1up` | `2up` |
+| | *`2up` is a landscape page — it reads without turning the sheet, and merged handouts keep it landscape with the footer on the short edge* | |
 | `declarerPlanCategory` | restrict the plan to matching categories; **empty = every lesson** | *(collection's play category)* |
 | `lin` | also emit LIN files for online play | off |
 | `studentSeat` | the single-student seat for the `South` view | `S` |

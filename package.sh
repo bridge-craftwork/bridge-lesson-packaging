@@ -682,8 +682,9 @@ action_declarers_plan() {
         return
     fi
 
-    if [[ ! -x "$BRIDGE_WRANGLER_PATH" ]]; then
-        error "bridge-wrangler not found at $BRIDGE_WRANGLER_PATH"
+    if [[ ! -x "$PBN_TO_PDF_PATH" ]]; then
+        warn "pbn-to-pdf not found at $PBN_TO_PDF_PATH; skipping declarers plan"
+        return
     fi
 
     local folder="$OUTPUT_DIR/$file"
@@ -701,8 +702,16 @@ action_declarers_plan() {
             local base_name="${nesw_file%.pbn}"
             local plan_pdf="${base_name} Declarers Plan.pdf"
             trace "Generating declarers plan: $plan_pdf"
-            "$BRIDGE_WRANGLER_PATH" to-pdf -i "$nesw_file" -o "$plan_pdf" \
-                -l declarers-plan -r 1-4 || warn "Failed to generate declarers plan: $nesw_file"
+            # 2-up (CONTRACT.md's declarerPlan default), not the 4-up this used to
+            # emit: the 4-up shrinks the panel to a size that is awkward to write on
+            # at the table, and the 2-up is a landscape page that reads without
+            # turning the sheet.
+            #
+            # No -r board range. This was pinned to "1-4", which silently dropped
+            # boards 5 and 6 of any larger set from the plan -- every board in the
+            # set gets one.
+            "$PBN_TO_PDF_PATH" "$nesw_file" -o "$plan_pdf" \
+                --layout declarers-plan-2up || warn "Failed to generate declarers plan: $nesw_file"
         done
     done
 }
