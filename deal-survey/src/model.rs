@@ -13,6 +13,13 @@ use serde::{Deserialize, Serialize};
 pub struct DealRecord {
     pub hash: String,
     pub source: Source,
+    /// Every *other* place this same deal was found in the collection, in scan
+    /// order. Collections that file one hand under several lessons (Eddie-Kantar
+    /// cross-lists by theme) need each of those lessons to count it; collections
+    /// whose duplicates are seat views of one lesson are unaffected, because the
+    /// rollup dedupes by lesson identity, not by file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub also_seen: Vec<Source>,
     pub structural: Structural,
 
     // Filled by later stages (slices 2–3). Absent until computed.
@@ -26,7 +33,7 @@ pub struct DealRecord {
     pub versions: Versions,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Source {
     pub collection: String,
     pub file: String,
@@ -35,6 +42,13 @@ pub struct Source {
     /// else the leading folder of `file`, else "(uncategorized)".
     #[serde(default)]
     pub category: String,
+}
+
+impl DealRecord {
+    /// The deal's primary source followed by every other place it was found.
+    pub fn sources(&self) -> impl Iterator<Item = &Source> {
+        std::iter::once(&self.source).chain(self.also_seen.iter())
+    }
 }
 
 /// Stage 1 — what the PBN actually contains. No solves.

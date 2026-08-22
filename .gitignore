@@ -1,1 +1,4 @@
 .DS_Store
+
+# Local survey output — characterizes private lesson repos; never publish.
+/survey-out/
