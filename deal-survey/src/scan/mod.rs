@@ -15,6 +15,7 @@ use crate::model::{
 };
 use anyhow::{Context, Result};
 use bridge_types::{Board, Deal, Direction, Vulnerability};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -50,6 +51,10 @@ pub fn scan_collection(collection_dir: &Path, out_dir: &Path) -> Result<ScanSumm
     let empty_deal = Deal::default().to_pbn(Direction::North);
 
     let mut sum = ScanSummary::default();
+    // Hashes already met *in this run*. First encounter rebuilds the source
+    // list from scratch (so a source that left the tree does not linger);
+    // later encounters append. Re-running over an unchanged tree is a no-op.
+    let mut seen_this_run: HashSet<String> = HashSet::new();
     for pbn in pbn_files(collection_dir) {
         let rel = pbn
             .strip_prefix(collection_dir)
@@ -69,19 +74,39 @@ pub fn scan_collection(collection_dir: &Path, out_dir: &Path) -> Result<ScanSumm
             sum.total += 1;
             let hash = content_hash(&board.deal); // rotation-canonical
 
-            // Cache: skip deals already fully baselined at this tool/ladder.
-            if let Some(existing) = cached_record(out_dir, &hash) {
+            let source = structural::source_for(&collection, &rel, board);
+
+            // Cache: the expensive solve is already done. Record where else the
+            // deal turned up, then move on without re-solving.
+            if let Some(mut existing) = cached_record(out_dir, &hash) {
                 if is_current_baselined(&existing) {
                     sum.cached += 1;
+                    if seen_this_run.contains(&hash) {
+                        if !existing.sources().any(|s| *s == source) {
+                            existing.also_seen.push(source);
+                            write_record(out_dir, &existing)?;
+                        }
+                    } else {
+                        // First sighting this run: this deal's primary source
+                        // wins, and any list from an earlier run is stale.
+                        seen_this_run.insert(hash.clone());
+                        if existing.source != source || !existing.also_seen.is_empty() {
+                            existing.source = source;
+                            existing.also_seen.clear();
+                            write_record(out_dir, &existing)?;
+                        }
+                    }
                     tally(&mut sum, &existing);
                     continue;
                 }
             }
 
             let (baseline, cardplay, probes) = analyze(board);
+            seen_this_run.insert(hash.clone());
             let record = DealRecord {
                 hash,
-                source: structural::source_for(&collection, &rel, board),
+                source,
+                also_seen: Vec::new(),
                 structural: structural::structural_of(board),
                 baseline,
                 cardplay,
@@ -223,9 +248,27 @@ fn pbn_files(root: &Path) -> Vec<PathBuf> {
                 .map(|x| x.eq_ignore_ascii_case("pbn"))
                 .unwrap_or(false)
         })
+        .filter(|p| !is_box_layout(p))
         .collect();
     files.sort(); // deterministic output ordering
     files
+}
+
+/// True for a generated dealing-machine box layout, e.g.
+/// "… practice deals - 4x9.pbn". These replicate the base file's deals to fill
+/// a 36-board box and carry no original content — the copies are re-dealt as
+/// `[VirtualBoard]` with no auction and no contract. They must be skipped, not
+/// merely deduplicated: they hash identically to the canonical file, and
+/// `" - 4x9"` sorts ahead of `".pbn"` (0x20 < 0x2E), so a surviving layout file
+/// wins the record slot and strips the deal of its auction.
+fn is_box_layout(path: &Path) -> bool {
+    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    match stem.rsplit_once(" - ") {
+        Some((_, tail)) => crate::profile::is_set_size(tail),
+        None => false,
+    }
 }
 
 /// One file per record, named by hash, pretty-printed for diffable ledgers.
@@ -235,6 +278,33 @@ fn write_record(out_dir: &Path, record: &DealRecord) -> Result<()> {
     std::fs::write(&path, format!("{json}\n"))
         .with_context(|| format!("writing {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod box_layout {
+    use super::is_box_layout;
+    use std::path::Path;
+
+    #[test]
+    fn skips_generated_dealing_machine_layouts_only() {
+        for f in [
+            "ABS3-9 Negative Doubles practice deals - 4x9.pbn",
+            "thinking-bridge-Signaling 1-6 - 6x6.pbn",
+            "2025-02-18 PM - Opening Bids of 2 Clubs - NESW - 5x7.pbn",
+        ] {
+            assert!(is_box_layout(Path::new(f)), "should skip {f}");
+        }
+        // Canonical files and seat views are real content — never skipped.
+        for f in [
+            "ABS3-9 Negative Doubles practice deals.pbn",
+            "thinking-bridge-Signaling 1-6 - NESW.pbn",
+            "thinking-bridge-Third Hand Play - NS.pbn",
+            "MBD6 Second Hand Play practice deals.pbn",
+            "Signaling 13-18.pbn",
+        ] {
+            assert!(!is_box_layout(Path::new(f)), "should keep {f}");
+        }
+    }
 }
 
 #[cfg(test)]

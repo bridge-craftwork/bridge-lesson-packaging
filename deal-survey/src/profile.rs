@@ -11,7 +11,7 @@ use crate::topics::Topics;
 use anyhow::{bail, Context, Result};
 use bridge_types::Strain;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,34 +203,49 @@ pub fn build(
     let mut by_category: BTreeMap<String, TopicStats> = BTreeMap::new();
 
     for rec in &records {
-        // Resolve the deal's topic + baseline (defaults if no table).
-        let (topic_name, base) = match topics {
-            Some(t) => t.resolve(&rec.source.file),
-            None => ("(none)".to_string(), crate::topics::Baseline::default()),
-        };
-        let category = if rec.source.category.is_empty() {
-            "(uncategorized)".to_string()
-        } else {
-            rec.source.category.clone()
-        };
+        // A deal is counted ONCE per distinct lesson / category / topic it is
+        // filed under, across every source it was seen at. Seat views and set
+        // slices of one lesson collapse (they share a lesson identity), while a
+        // hand deliberately cross-listed under several themes counts in each —
+        // so "Third Hand Play" reports every hand filed there even if some also
+        // teach a bidding point. Collection totals below stay per unique deal.
+        let mut lesson_seen: BTreeSet<String> = BTreeSet::new();
+        let mut category_seen: BTreeSet<String> = BTreeSet::new();
+        let mut topic_seen: BTreeSet<String> = BTreeSet::new();
 
-        // Per-lesson breakdown (always). Lessons aggregate their slices/views/
-        // rotation variants under a single folder-aware identity.
-        let lesson_name = lesson_of(&rec.source.file, &category);
-        let lesson = by_lesson
-            .entry(format!("{category}\u{0}{lesson_name}"))
-            .or_default();
-        lesson.topic = topic_name.clone();
-        lesson.category = category.clone();
-        lesson.lesson = lesson_name;
-        accumulate(lesson, rec, base);
+        for src in rec.sources() {
+            // Resolve the deal's topic + baseline (defaults if no table).
+            let (topic_name, base) = match topics {
+                Some(t) => t.resolve(&src.file),
+                None => ("(none)".to_string(), crate::topics::Baseline::default()),
+            };
+            let category = if src.category.is_empty() {
+                "(uncategorized)".to_string()
+            } else {
+                src.category.clone()
+            };
 
-        // Per-category rollup (always).
-        accumulate(by_category.entry(category).or_default(), rec, base);
+            // Per-lesson breakdown (always). Lessons aggregate their slices/
+            // views/rotation variants under a single folder-aware identity.
+            let lesson_name = lesson_of(&src.file, &category);
+            let key = format!("{category}\u{0}{lesson_name}");
+            if lesson_seen.insert(key.clone()) {
+                let lesson = by_lesson.entry(key).or_default();
+                lesson.topic = topic_name.clone();
+                lesson.category = category.clone();
+                lesson.lesson = lesson_name;
+                accumulate(lesson, rec, base);
+            }
 
-        // Per-topic breakdown (only with a topic table).
-        if topics.is_some() {
-            accumulate(by_topic.entry(topic_name).or_default(), rec, base);
+            // Per-category rollup (always).
+            if category_seen.insert(category.clone()) {
+                accumulate(by_category.entry(category).or_default(), rec, base);
+            }
+
+            // Per-topic breakdown (only with a topic table).
+            if topics.is_some() && topic_seen.insert(topic_name.clone()) {
+                accumulate(by_topic.entry(topic_name).or_default(), rec, base);
+            }
         }
 
         // Structural coverage.
@@ -408,11 +423,22 @@ fn lesson_of(file: &str, category: &str) -> String {
 }
 
 /// A packaging folder that is not itself a lesson (a seat view or a set slice).
+/// "Chapters" holds the same lesson split into parts alongside the parent's
+/// combined file, so it is a slice, not a lesson of its own.
 fn is_view_or_set(f: &str) -> bool {
     let v = f.to_lowercase();
     matches!(
         v.as_str(),
-        "full table" | "north-south" | "south" | "north" | "east" | "west" | "ns" | "n-s" | "nesw"
+        "full table"
+            | "north-south"
+            | "south"
+            | "north"
+            | "east"
+            | "west"
+            | "ns"
+            | "n-s"
+            | "nesw"
+            | "chapters"
     ) || v.ends_with("board sets")
         || v.ends_with("board set")
         || is_set_size(f)
@@ -460,7 +486,7 @@ fn normalize_lesson_name(filename: &str) -> String {
 fn is_range(t: &str) -> bool {
     two_numbers(t, '-')
 }
-fn is_set_size(t: &str) -> bool {
+pub(crate) fn is_set_size(t: &str) -> bool {
     two_numbers(t, 'x')
 }
 fn two_numbers(t: &str, sep: char) -> bool {
@@ -525,6 +551,50 @@ mod tests {
     use super::*;
     use crate::model::*;
 
+    fn src(category: &str, lesson: &str, file: &str) -> Source {
+        Source {
+            collection: "Test".into(),
+            file: format!("{category}/{lesson}/{file}"),
+            board: Some(1),
+            category: category.into(),
+        }
+    }
+
+    /// One hand cross-listed under several themes must count in each of them,
+    /// while extra seat views of a single lesson must not inflate that lesson.
+    /// The collection total stays one deal either way.
+    #[test]
+    fn counts_a_deal_once_per_distinct_lesson_not_once_per_file() {
+        let mut r = rec(Some(1), true, &[], "4H by S");
+        r.source = src("Defensive Themes", "Third Hand Play", "deals.pbn");
+        r.also_seen = vec![
+            // Same lesson, other seat views — must NOT double-count.
+            src("Defensive Themes", "Third Hand Play", "deals-NS.pbn"),
+            src("Defensive Themes", "Third Hand Play", "deals-S.pbn"),
+            // Genuinely cross-listed under another theme — MUST count there.
+            src("Bidding Themes", "Negative Doubles", "deals.pbn"),
+        ];
+
+        let p = build(vec![r], None, None);
+
+        assert_eq!(p.deal_count, 1, "collection counts the hand once");
+        let lesson = |c: &str, l: &str| {
+            p.by_lesson
+                .get(&format!("{c}\u{0}{l}"))
+                .map(|s| s.deal_count)
+                .unwrap_or(0)
+        };
+        assert_eq!(lesson("Defensive Themes", "Third Hand Play"), 1);
+        assert_eq!(lesson("Bidding Themes", "Negative Doubles"), 1);
+        assert_eq!(p.by_category["Defensive Themes"].deal_count, 1);
+        assert_eq!(p.by_category["Bidding Themes"].deal_count, 1);
+        assert_eq!(
+            p.by_lesson.len(),
+            2,
+            "three files, one lesson each way -> two lessons"
+        );
+    }
+
     fn rec(difficulty: Option<u8>, dd_makes: bool, fired: &[&str], contract: &str) -> DealRecord {
         DealRecord {
             hash: "h".into(),
@@ -534,6 +604,7 @@ mod tests {
                 board: Some(1),
                 category: "cat".into(),
             },
+            also_seen: Vec::new(),
             structural: Structural {
                 contract: Some(contract.split_whitespace().next().unwrap().to_string()),
                 contract_provenance: ContractProvenance::Explicit,

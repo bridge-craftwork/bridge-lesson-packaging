@@ -18,7 +18,7 @@
 #   rotate_hands      Rotate to the ROTATE_PATTERNS views (default S,NS,NESW) via bridge-wrangler
 #   block_replicate   Replicate a set across tables (+ dealer summary) via bridge-wrangler
 #   declarers_plan    Declarer's-plan PDF, gated to DECLARER_PLAN_CATEGORY lessons
-#   bidding_sheets    Bidding-practice sheets via pbn-to-pdf
+#   bidding_sheets    Bidding-practice sheets
 #   lin              LIN files for online play (only when LIN=1)
 #   aggregate         Organize into Full Table / North-South / South
 #   merge_handouts    Merge Components into a single Handouts PDF per view
@@ -33,7 +33,7 @@
 #
 # Config (env or sourced --config file); see CONTRACT.md and configs/example.conf:
 #   INPUT_DIR, OUTPUT_DIR, ROTATE_PATTERNS, DECLARER_PLAN_CATEGORY, LIN,
-#   BRIDGE_WRANGLER_PATH, PBN_TO_PDF_PATH, PDF_HANDOUTS_PATH
+#   BRIDGE_WRANGLER_PATH, PDF_HANDOUTS_PATH
 
 set -e
 
@@ -55,12 +55,18 @@ NC='\033[0m' # No Color
 INPUT_DIR="${INPUT_DIR:-Presentation}"       # clean lesson PBNs, by {category}/{lesson}
 OUTPUT_DIR="${OUTPUT_DIR:-Rotations}"         # packaged output tree
 ROTATE_PATTERNS="${ROTATE_PATTERNS:-S,NS,NESW}"   # views to emit (in-person NESW + online S/NS)
-DECLARER_PLAN_CATEGORY="${DECLARER_PLAN_CATEGORY:-Declarer Play}"  # only these get a declarer's plan
+# Only lessons whose category matches get a declarer's plan. Set to "" for EVERY
+# lesson. Note the "-" (not ":-"): an explicitly empty value must survive as empty,
+# or "" would silently fall back to the default and mean *fewer* lessons, not all.
+DECLARER_PLAN_CATEGORY="${DECLARER_PLAN_CATEGORY-Declarer Play}"
 LIN="${LIN:-0}"                              # 1 = also emit LIN files for online play
+# Named board groupings a collection supplies itself (e.g. a book's chapters), as a
+# subfolder of PBNs inside each lesson's input folder. Each becomes its own packaged
+# folder, treated exactly like All/. Empty = feature off. See CONTRACT.md.
+GROUP_DIR="${GROUP_DIR:-}"
 
 # Tool paths
 BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-$HOME/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
-PBN_TO_PDF_PATH="${PBN_TO_PDF_PATH:-$HOME/Development/GitHub/pbn-to-pdf/target/release/pbn-to-pdf}"
 PDF_HANDOUTS_PATH="${PDF_HANDOUTS_PATH:-$HOME/Development/GitHub/pdf-handouts/target/release/pdf-handouts}"
 
 # Trace mode (set TRACE=1 to enable)
@@ -247,8 +253,23 @@ filter_folders() {
     # Find leaf folders (folders with no subdirectories)
     local -a leaf_folders=()
     while IFS= read -r -d '' dir; do
-        # Check if this is a leaf folder (no subdirectories)
-        if [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)" ]]; then
+        # A lesson's GROUP_DIR is part of that lesson, not a lesson in its own right:
+        # never offer it (or anything inside it) as a candidate, and don't let its
+        # presence stop the parent from counting as a leaf.
+        if [[ -n "$GROUP_DIR" ]] && \
+           [[ "$dir" == */"$GROUP_DIR" || "$dir" == */"$GROUP_DIR"/* ]]; then
+            continue
+        fi
+
+        local -a subdirs=()
+        while IFS= read -r -d '' sub; do
+            if [[ -n "$GROUP_DIR" && "$(basename "$sub")" == "$GROUP_DIR" ]]; then
+                continue
+            fi
+            subdirs+=("$sub")
+        done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+
+        if [[ ${#subdirs[@]} -eq 0 ]]; then
             leaf_folders+=("$dir")
         fi
     done < <(find "$base_dir" -type d -print0 2>/dev/null)
@@ -273,6 +294,28 @@ filter_folders() {
     done
 
     printf '%s\n' "${result[@]}" | sort
+}
+
+# Name of a lesson's unsliced "whole lesson" folder: "All 48 boards". The count is
+# in the name because lessons vary widely in size, and the folder should say what it
+# holds without being opened. Same shape in every collection -- deliberately not
+# configurable, so no two collections' output trees can drift apart.
+all_dir_name() {
+    local folder="$1" pbn n=0
+    pbn=$(find "$folder" -maxdepth 1 -name "*.pbn" -type f | head -1)
+    [[ -n "$pbn" ]] && n=$(get_hand_count "$pbn")
+    echo "All $n boards"
+}
+
+# Echo each of a lesson's group folders (one per group PBN), newline separated.
+# Silent when GROUP_DIR is unset or the lesson has no groups.
+group_folders() {
+    local folder="$1"
+    [[ -n "$GROUP_DIR" && -d "$folder/$GROUP_DIR" ]] || return 0
+    local g
+    for g in "$folder/$GROUP_DIR"/*/; do
+        [[ -d "$g" ]] && echo "${g%/}"
+    done
 }
 
 # Count boards in a PBN file
@@ -329,6 +372,18 @@ action_copy_presentation() {
         cp "$pbn" "$dst/"
         trace "Copied: $(basename "$pbn")"
     done
+
+    # Copy the lesson's group PBNs, each into a folder of its own, so that every
+    # downstream action can treat a group exactly the way it treats All/.
+    if [[ -n "$GROUP_DIR" && -d "$src/$GROUP_DIR" ]]; then
+        for pbn in "$src/$GROUP_DIR"/*.pbn; do
+            [[ -f "$pbn" ]] || continue
+            local gname=$(basename "$pbn" .pbn)
+            mkdir -p "$dst/$GROUP_DIR/$gname"
+            cp "$pbn" "$dst/$GROUP_DIR/$gname/"
+            trace "Copied group: $GROUP_DIR/$gname"
+        done
+    fi
 
     # Copy .pdf files that don't have matching .pbn files
     for pdf in "$src"/*.pdf; do
@@ -407,7 +462,7 @@ action_slice_deals() {
     trace "Found $total_boards boards"
 
     # Create All folder and copy with hand count in name
-    local all_folder="$folder/All"
+    local all_folder="$folder/$(all_dir_name "$folder")"
     mkdir -p "$all_folder"
 
     local new_name="$base_name ($total_boards hands).pbn"
@@ -506,9 +561,14 @@ action_rotate_hands() {
     # Build list of folders to process: All + each slice folder
     local -a folders_to_process=()
 
-    if [[ -d "$folder/All" ]]; then
-        folders_to_process+=("$folder/All")
+    local all_folder="$folder/$(all_dir_name "$folder")"
+    if [[ -d "$all_folder" ]]; then
+        folders_to_process+=("$all_folder")
     fi
+
+    while IFS= read -r group_folder; do
+        [[ -n "$group_folder" ]] && folders_to_process+=("$group_folder")
+    done < <(group_folders "$folder")
 
     for slice in "${slices[@]}"; do
         local slice_folder="$folder/$slice-Board Sets"
@@ -585,12 +645,13 @@ action_block_replicate() {
             # Run block-replicate with PDF generation
             "$BRIDGE_WRANGLER_PATH" block-replicate -i "$nesw_file" --pdf || warn "Failed to block-replicate: $nesw_file"
 
-            # Generate dealer summary PDF using pbn-to-pdf
-            if [[ -x "$PBN_TO_PDF_PATH" ]]; then
+            # Generate dealer summary PDF
+            if [[ -x "$BRIDGE_WRANGLER_PATH" ]]; then
                 local base_name="${nesw_file%.pbn}"
                 local summary_pdf="${base_name} Dealer Summary.pdf"
                 trace "Generating dealer summary: $summary_pdf"
-                "$PBN_TO_PDF_PATH" "$nesw_file" -o "$summary_pdf" --layout dealer-summary || warn "Failed to generate dealer summary: $nesw_file"
+                "$BRIDGE_WRANGLER_PATH" to-pdf -i "$nesw_file" -o "$summary_pdf" \
+                    -l dealer-summary || warn "Failed to generate dealer summary: $nesw_file"
             fi
         done
     done
@@ -604,7 +665,9 @@ action_block_replicate() {
 # segment of the lesson path; override the match with DECLARER_PLAN_CATEGORY.
 is_declarer_play_lesson() {
     local category="${1%%/*}"
-    [[ "$category" == *"${DECLARER_PLAN_CATEGORY:-Declarer Play}"* ]]
+    # An empty DECLARER_PLAN_CATEGORY means every lesson qualifies.
+    [[ -z "$DECLARER_PLAN_CATEGORY" ]] && return 0
+    [[ "$category" == *"$DECLARER_PLAN_CATEGORY"* ]]
 }
 
 # Action: declarers_plan
@@ -620,7 +683,8 @@ action_declarers_plan() {
     fi
 
     if [[ ! -x "$BRIDGE_WRANGLER_PATH" ]]; then
-        error "bridge-wrangler not found at $BRIDGE_WRANGLER_PATH"
+        warn "bridge-wrangler not found at $BRIDGE_WRANGLER_PATH; skipping declarers plan"
+        return
     fi
 
     local folder="$OUTPUT_DIR/$file"
@@ -638,8 +702,16 @@ action_declarers_plan() {
             local base_name="${nesw_file%.pbn}"
             local plan_pdf="${base_name} Declarers Plan.pdf"
             trace "Generating declarers plan: $plan_pdf"
+            # 2-up (CONTRACT.md's declarerPlan default), not the 4-up this used to
+            # emit: the 4-up shrinks the panel to a size that is awkward to write on
+            # at the table, and the 2-up is a landscape page that reads without
+            # turning the sheet.
+            #
+            # No -r board range. This was pinned to "1-4", which silently dropped
+            # boards 5 and 6 of any larger set from the plan -- every board in the
+            # set gets one.
             "$BRIDGE_WRANGLER_PATH" to-pdf -i "$nesw_file" -o "$plan_pdf" \
-                -l declarers-plan -r 1-4 || warn "Failed to generate declarers plan: $nesw_file"
+                -l declarers-plan-2up || warn "Failed to generate declarers plan: $nesw_file"
         done
     done
 }
@@ -654,8 +726,8 @@ action_bidding_sheets() {
 
     trace "Executing bidding_sheets for: $file with slices: ${slices[*]}"
 
-    if [[ ! -x "$PBN_TO_PDF_PATH" ]]; then
-        error "pbn-to-pdf not found at $PBN_TO_PDF_PATH"
+    if [[ ! -x "$BRIDGE_WRANGLER_PATH" ]]; then
+        error "bridge-wrangler not found at $BRIDGE_WRANGLER_PATH"
     fi
 
     local folder="$OUTPUT_DIR/$file"
@@ -683,7 +755,8 @@ action_bidding_sheets() {
             local sheets_pdf="${base_name} Bidding Sheets.pdf"
 
             trace "Generating bidding sheets: $sheets_pdf"
-            "$PBN_TO_PDF_PATH" "$ns_file" -o "$sheets_pdf" --layout bidding-sheets || warn "Failed to generate bidding sheets: $ns_file"
+            "$BRIDGE_WRANGLER_PATH" to-pdf -i "$ns_file" -o "$sheets_pdf" \
+                -l bidding-sheets || warn "Failed to generate bidding sheets: $ns_file"
         done
     done
 }
@@ -691,26 +764,15 @@ action_bidding_sheets() {
 #---------------------------------------------------
 # Action: aggregate
 #---------------------------------------------------
-action_aggregate() {
-    local file="$1"
-    shift
-    local slices=("$@")
-
-    trace "Executing aggregate for: $file with slices: ${slices[*]}"
-
-    local folder="$OUTPUT_DIR/$file"
-
-    if [[ ! -d "$folder" ]]; then
-        warn "Folder not found: $folder"
-        return
-    fi
-
-    for slice in "${slices[@]}"; do
-        local bs_folder="$folder/$slice-Board Sets"
+# Sort one folder of rotated files into Full Table / North-South / South and tidy
+# the names. Generic on its argument: used for the slice folders, for All/, and for
+# each group folder (a group is packaged exactly like All/).
+aggregate_folder() {
+        local bs_folder="$1"
 
         if [[ ! -d "$bs_folder" ]]; then
-            trace "Skipping missing board set folder: $bs_folder"
-            continue
+            trace "Skipping missing folder: $bs_folder"
+            return
         fi
 
         trace "Aggregating in: $bs_folder"
@@ -783,12 +845,42 @@ action_aggregate() {
             fi
         done
 
-        # Delete original slice-level .pbn files (those with "hands).pbn")
+        # Delete the unrotated source PBN (those with "hands).pbn"); the rotated
+        # per-view copies remain, and the full lesson PBN sits at the lesson root.
         for f in "$bs_folder"/*hands\).pbn; do
             [[ -f "$f" ]] || continue
             trace "Deleting: $f"
             rm "$f"
         done
+}
+
+action_aggregate() {
+    local file="$1"
+    shift
+    local slices=("$@")
+
+    trace "Executing aggregate for: $file with slices: ${slices[*]}"
+
+    local folder="$OUTPUT_DIR/$file"
+
+    if [[ ! -d "$folder" ]]; then
+        warn "Folder not found: $folder"
+        return
+    fi
+
+    local -a targets=()
+    local all_folder="$folder/$(all_dir_name "$folder")"
+    [[ -d "$all_folder" ]] && targets+=("$all_folder")
+    while IFS= read -r group_folder; do
+        [[ -n "$group_folder" ]] && targets+=("$group_folder")
+    done < <(group_folders "$folder")
+    for slice in "${slices[@]}"; do
+        targets+=("$folder/$slice-Board Sets")
+    done
+
+    local target
+    for target in "${targets[@]}"; do
+        aggregate_folder "$target"
     done
 }
 
@@ -869,7 +961,11 @@ action_lin() {
     local folder="$OUTPUT_DIR/$file"
     [[ -d "$folder" ]] || { warn "Folder not found: $folder"; return; }
     local -a targets=()
-    [[ -d "$folder/All" ]] && targets+=("$folder/All")
+    local all_folder="$folder/$(all_dir_name "$folder")"
+    [[ -d "$all_folder" ]] && targets+=("$all_folder")
+    while IFS= read -r group_folder; do
+        [[ -n "$group_folder" ]] && targets+=("$group_folder")
+    done < <(group_folders "$folder")
     for slice in "${slices[@]}"; do
         [[ -d "$folder/$slice-Board Sets" ]] && targets+=("$folder/$slice-Board Sets")
     done
@@ -898,11 +994,6 @@ if [[ ! -x "$BRIDGE_WRANGLER_PATH" ]]; then
     warn "Some actions may not work. Set BRIDGE_WRANGLER_PATH environment variable."
 fi
 
-# Check pbn-to-pdf
-if [[ ! -x "$PBN_TO_PDF_PATH" ]]; then
-    warn "pbn-to-pdf not found at $PBN_TO_PDF_PATH"
-    warn "bidding_sheets and dealer_summary will be skipped. Set PBN_TO_PDF_PATH environment variable."
-fi
 
 # Expand actions
 ACTIONS=$(expand_actions "$ACTIONS_ARG")
