@@ -18,7 +18,7 @@
 #   rotate_hands      Rotate to the ROTATE_PATTERNS views (default S,NS,NESW) via bridge-wrangler
 #   block_replicate   Replicate a set across tables (+ dealer summary) via bridge-wrangler
 #   declarers_plan    Declarer's-plan PDF, gated to DECLARER_PLAN_CATEGORY lessons
-#   bidding_sheets    Bidding-practice sheets via pbn-to-pdf
+#   bidding_sheets    Bidding-practice sheets
 #   lin              LIN files for online play (only when LIN=1)
 #   aggregate         Organize into Full Table / North-South / South
 #   merge_handouts    Merge Components into a single Handouts PDF per view
@@ -33,7 +33,7 @@
 #
 # Config (env or sourced --config file); see CONTRACT.md and configs/example.conf:
 #   INPUT_DIR, OUTPUT_DIR, ROTATE_PATTERNS, DECLARER_PLAN_CATEGORY, LIN,
-#   BRIDGE_WRANGLER_PATH, PBN_TO_PDF_PATH, PDF_HANDOUTS_PATH
+#   BRIDGE_WRANGLER_PATH, PDF_HANDOUTS_PATH
 
 set -e
 
@@ -67,7 +67,6 @@ GROUP_DIR="${GROUP_DIR:-}"
 
 # Tool paths
 BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-$HOME/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
-PBN_TO_PDF_PATH="${PBN_TO_PDF_PATH:-$HOME/Development/GitHub/pbn-to-pdf/target/release/pbn-to-pdf}"
 PDF_HANDOUTS_PATH="${PDF_HANDOUTS_PATH:-$HOME/Development/GitHub/pdf-handouts/target/release/pdf-handouts}"
 
 # Trace mode (set TRACE=1 to enable)
@@ -646,12 +645,13 @@ action_block_replicate() {
             # Run block-replicate with PDF generation
             "$BRIDGE_WRANGLER_PATH" block-replicate -i "$nesw_file" --pdf || warn "Failed to block-replicate: $nesw_file"
 
-            # Generate dealer summary PDF using pbn-to-pdf
-            if [[ -x "$PBN_TO_PDF_PATH" ]]; then
+            # Generate dealer summary PDF
+            if [[ -x "$BRIDGE_WRANGLER_PATH" ]]; then
                 local base_name="${nesw_file%.pbn}"
                 local summary_pdf="${base_name} Dealer Summary.pdf"
                 trace "Generating dealer summary: $summary_pdf"
-                "$PBN_TO_PDF_PATH" "$nesw_file" -o "$summary_pdf" --layout dealer-summary || warn "Failed to generate dealer summary: $nesw_file"
+                "$BRIDGE_WRANGLER_PATH" to-pdf -i "$nesw_file" -o "$summary_pdf" \
+                    -l dealer-summary || warn "Failed to generate dealer summary: $nesw_file"
             fi
         done
     done
@@ -682,8 +682,8 @@ action_declarers_plan() {
         return
     fi
 
-    if [[ ! -x "$PBN_TO_PDF_PATH" ]]; then
-        warn "pbn-to-pdf not found at $PBN_TO_PDF_PATH; skipping declarers plan"
+    if [[ ! -x "$BRIDGE_WRANGLER_PATH" ]]; then
+        warn "bridge-wrangler not found at $BRIDGE_WRANGLER_PATH; skipping declarers plan"
         return
     fi
 
@@ -710,8 +710,8 @@ action_declarers_plan() {
             # No -r board range. This was pinned to "1-4", which silently dropped
             # boards 5 and 6 of any larger set from the plan -- every board in the
             # set gets one.
-            "$PBN_TO_PDF_PATH" "$nesw_file" -o "$plan_pdf" \
-                --layout declarers-plan-2up || warn "Failed to generate declarers plan: $nesw_file"
+            "$BRIDGE_WRANGLER_PATH" to-pdf -i "$nesw_file" -o "$plan_pdf" \
+                -l declarers-plan-2up || warn "Failed to generate declarers plan: $nesw_file"
         done
     done
 }
@@ -726,8 +726,8 @@ action_bidding_sheets() {
 
     trace "Executing bidding_sheets for: $file with slices: ${slices[*]}"
 
-    if [[ ! -x "$PBN_TO_PDF_PATH" ]]; then
-        error "pbn-to-pdf not found at $PBN_TO_PDF_PATH"
+    if [[ ! -x "$BRIDGE_WRANGLER_PATH" ]]; then
+        error "bridge-wrangler not found at $BRIDGE_WRANGLER_PATH"
     fi
 
     local folder="$OUTPUT_DIR/$file"
@@ -755,7 +755,8 @@ action_bidding_sheets() {
             local sheets_pdf="${base_name} Bidding Sheets.pdf"
 
             trace "Generating bidding sheets: $sheets_pdf"
-            "$PBN_TO_PDF_PATH" "$ns_file" -o "$sheets_pdf" --layout bidding-sheets || warn "Failed to generate bidding sheets: $ns_file"
+            "$BRIDGE_WRANGLER_PATH" to-pdf -i "$ns_file" -o "$sheets_pdf" \
+                -l bidding-sheets || warn "Failed to generate bidding sheets: $ns_file"
         done
     done
 }
@@ -993,11 +994,6 @@ if [[ ! -x "$BRIDGE_WRANGLER_PATH" ]]; then
     warn "Some actions may not work. Set BRIDGE_WRANGLER_PATH environment variable."
 fi
 
-# Check pbn-to-pdf
-if [[ ! -x "$PBN_TO_PDF_PATH" ]]; then
-    warn "pbn-to-pdf not found at $PBN_TO_PDF_PATH"
-    warn "bidding_sheets and dealer_summary will be skipped. Set PBN_TO_PDF_PATH environment variable."
-fi
 
 # Expand actions
 ACTIONS=$(expand_actions "$ACTIONS_ARG")

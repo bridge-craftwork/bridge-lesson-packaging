@@ -157,8 +157,9 @@ untouched; the toolset strips only interactive/app control tags that have no mea
 
 ## Tools
 
-Built on `bridge-wrangler` (PBN rotation, block-replication, PBN→PDF) and `pdf-handouts` (PDF
-merge + headers/footers). See `README.md` for invocation and `configs/example.conf` for a
+Built on `bridge-wrangler` (PBN rotation, block-replication, and every PBN→PDF layout) and
+`pdf-handouts` (PDF merge + headers/footers). Two tools, not three: `bridge-wrangler`
+renders all the page layouts, so a collection needs only it and `pdf-handouts`. See `README.md` for invocation and `configs/example.conf` for a
 worked config.
 
 ## Open questions (v1 → v2)
