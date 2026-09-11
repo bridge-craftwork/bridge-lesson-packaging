@@ -425,7 +425,7 @@ action_pdf_presentation() {
         [[ -f "$pbn" ]] || continue
         local pdf="${pbn%.pbn}.pdf"
         trace "Converting to PDF: $pbn"
-        "$BRIDGE_WRANGLER_PATH" to-pdf -i "$pbn" -o "$pdf" || warn "Failed to convert: $pbn"
+        "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$pbn" -o "$pdf" || warn "Failed to convert: $pbn"
     done
 }
 
@@ -599,7 +599,7 @@ action_rotate_hands() {
                 [[ -f "$rotated" ]] || continue
                 local pdf="${rotated%.pbn}.pdf"
                 trace "Converting to PDF: $rotated"
-                "$BRIDGE_WRANGLER_PATH" to-pdf -i "$rotated" -o "$pdf" || warn "Failed to convert: $rotated"
+                "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$rotated" -o "$pdf" || warn "Failed to convert: $rotated"
             done
         done
     done
@@ -643,14 +643,14 @@ action_block_replicate() {
             trace "Block replicating: $nesw_file"
 
             # Run block-replicate with PDF generation
-            "$BRIDGE_WRANGLER_PATH" block-replicate -i "$nesw_file" --pdf || warn "Failed to block-replicate: $nesw_file"
+            "$BRIDGE_WRANGLER_PATH" block-replicate -i "$nesw_file" --pdf --no-page-furniture || warn "Failed to block-replicate: $nesw_file"
 
             # Generate dealer summary PDF
             if [[ -x "$BRIDGE_WRANGLER_PATH" ]]; then
                 local base_name="${nesw_file%.pbn}"
                 local summary_pdf="${base_name} Dealer Summary.pdf"
                 trace "Generating dealer summary: $summary_pdf"
-                "$BRIDGE_WRANGLER_PATH" to-pdf -i "$nesw_file" -o "$summary_pdf" \
+                "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$nesw_file" -o "$summary_pdf" \
                     -l dealer-summary || warn "Failed to generate dealer summary: $nesw_file"
             fi
         done
@@ -710,7 +710,7 @@ action_declarers_plan() {
             # No -r board range. This was pinned to "1-4", which silently dropped
             # boards 5 and 6 of any larger set from the plan -- every board in the
             # set gets one.
-            "$BRIDGE_WRANGLER_PATH" to-pdf -i "$nesw_file" -o "$plan_pdf" \
+            "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$nesw_file" -o "$plan_pdf" \
                 -l declarers-plan-2up || warn "Failed to generate declarers plan: $nesw_file"
         done
     done
@@ -755,7 +755,7 @@ action_bidding_sheets() {
             local sheets_pdf="${base_name} Bidding Sheets.pdf"
 
             trace "Generating bidding sheets: $sheets_pdf"
-            "$BRIDGE_WRANGLER_PATH" to-pdf -i "$ns_file" -o "$sheets_pdf" \
+            "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$ns_file" -o "$sheets_pdf" \
                 -l bidding-sheets || warn "Failed to generate bidding sheets: $ns_file"
         done
     done
