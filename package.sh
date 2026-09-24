@@ -25,6 +25,7 @@
 #   lin              LIN files for online play (only when LIN=1)
 #   aggregate         Organize into Full Table / North-South / South
 #   merge_handouts    Merge Components into a single Handouts PDF per HANDOUT_VIEWS view
+#   tidy              Remove the lesson folder's working files (only when TIDY_LESSON_ROOT=1)
 #
 # Usage:
 #   package.sh --config configs/<collection>.conf <filter> <actions> [set sizes...]
@@ -36,7 +37,7 @@
 #
 # Config (env or sourced --config file); see CONTRACT.md and configs/example.conf:
 #   INPUT_DIR, OUTPUT_DIR, ROTATE_PATTERNS, DECLARER_PLAN_CATEGORY, LIN, GROUP_DIR,
-#   DEALS_GLOB, COMPANION_PBNS, HANDOUT_VIEWS, ROTATE_VUL, STRIP_TAGS,
+#   DEALS_GLOB, COMPANION_PBNS, HANDOUT_VIEWS, ROTATE_VUL, STRIP_TAGS, TIDY_LESSON_ROOT,
 #   BRIDGE_WRANGLER_PATH, PDF_HANDOUTS_PATH
 
 set -e
@@ -87,6 +88,11 @@ ROTATE_VUL="${ROTATE_VUL:-standard}"
 # Space-separated: "Name" drops [Name ...] tag lines, "%Name" drops %Name directive
 # lines, and "%BCOptions:Word" drops one option from the %BCOptions line.
 STRIP_TAGS="${STRIP_TAGS:-}"
+# 1 = once everything is built, the lesson folder keeps only the documents it was given
+# (lesson plans, intros): the copied PBNs and the rendered companions, which exist to
+# build the sets and handouts, are removed. It runs last; to rerun a single action
+# afterwards, rerun from copy_presentation.
+TIDY_LESSON_ROOT="${TIDY_LESSON_ROOT:-0}"
 
 # Tool paths
 BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-$HOME/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
@@ -129,6 +135,7 @@ show_usage() {
     echo "             - bidding_sheets"
     echo "             - aggregate"
     echo "             - merge_handouts"
+    echo "             - tidy"
     echo "             Shortcuts:"
     echo "             - '*' : Run all actions (except pdf_presentation)"
     echo "             - '+action' : Run from start through action"
@@ -174,6 +181,7 @@ ALL_ACTIONS=(
     "lin"
     "aggregate"
     "merge_handouts"
+    "tidy"
 )
 
 # Actions included in wildcard expansion (excluding pdf_presentation)
@@ -189,6 +197,7 @@ EXPANDABLE_ACTIONS=(
     "lin"
     "aggregate"
     "merge_handouts"
+    "tidy"
 )
 
 # Expand action shortcuts
@@ -586,7 +595,10 @@ action_slice_deals() {
     trace "Processing file: $pbn_file"
 
     local total_boards=$(get_hand_count "$pbn_file")
-    local base_name=$(basename "$pbn_file" .pbn)
+    # Sets (and everything made from them) are named for the lesson, not the file's
+    # role: "X practice deals.pbn" under DEALS_GLOB "* practice deals.pbn" gives "X Set 1
+    # (4 hands) ...". Under the default "*.pbn" this is just the file name.
+    local base_name=$(lesson_stem "$pbn_file")
 
     trace "Found $total_boards boards"
 
@@ -1161,6 +1173,29 @@ merge_view() {
 }
 
 #---------------------------------------------------
+# Action: tidy (only when TIDY_LESSON_ROOT=1)
+#---------------------------------------------------
+action_tidy() {
+    local file="$1"
+    [[ "$TIDY_LESSON_ROOT" == "1" ]] || { trace "tidy disabled (TIDY_LESSON_ROOT != 1)"; return; }
+    local folder="$OUTPUT_DIR/$file"
+    [[ -d "$folder" ]] || return 0
+
+    # Rendered companions first, while their PBNs still say which PDFs they are.
+    local pbn
+    while IFS= read -r pbn; do
+        [[ -n "$pbn" ]] && rm -f "${pbn%.pbn}.pdf"
+    done < <(companion_pbns "$folder")
+
+    local f
+    for f in "$folder"/*.pbn; do
+        [[ -f "$f" ]] || continue
+        trace "Tidy: $f"
+        rm "$f"
+    done
+}
+
+#---------------------------------------------------
 # Action: lin (LIN files for online play; only when LIN=1)
 #---------------------------------------------------
 action_lin() {
@@ -1272,6 +1307,9 @@ for action in $ACTIONS; do
                 ;;
             merge_handouts)
                 action_merge_handouts "$folder" "${SLICES[@]}"
+                ;;
+            tidy)
+                action_tidy "$folder"
                 ;;
             *)
                 warn "Unknown action: $action"

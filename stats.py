@@ -70,14 +70,63 @@ def set_source_stem(lesson_dir):
     return None
 
 
+# A board's four hands, whichever seats they sit in: the same deal before and after
+# rotation. Hands are the space-separated fields after the "N:" of a [Deal] tag.
+DEAL_RE = re.compile(r'^\[Deal "[NESW]:([^"]*)"\]', re.M)
+WHOLE_NESW_RE = re.compile(r'^(?!.* Set \d+ )[^/]* \(\d+ hands?\)\s+NESW\.pbn$')
+
+
+def deal_key(path):
+    """The file's deals independent of seating, board by board; None if unreadable."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            deals = DEAL_RE.findall(f.read())
+    except OSError:
+        return None
+    return tuple(tuple(sorted(d.split())) for d in deals) or None
+
+
+def whole_nesw_pbn(lesson_dir):
+    """The whole lesson's Full Table PBN (a single-set lesson's, or All/'s), or None."""
+    for cur, dirs, files in os.walk(lesson_dir):
+        dirs[:] = sorted(d for d in dirs if not d.endswith("-Board Sets"))
+        for f in sorted(files):
+            if WHOLE_NESW_RE.match(f):
+                return os.path.join(cur, f)
+    return None
+
+
+def source_pbn(lesson_dir):
+    """The PBN at the lesson root that the sets were cut from, or None.
+
+    Usually it shares the sets' name ("X.pbn" beside "X Set 1 (4 hands) ..."). A collection
+    that names sets for the lesson rather than the deals file ("X practice deals.pbn" ->
+    "X (4 hands) ...") breaks that, and a lesson root may also hold companions (exercises),
+    so failing the name, the source is the root PBN holding the same deals as the
+    whole-lesson Full Table view -- rotation moves hands between seats, never changes them.
+    """
+    stem = set_source_stem(lesson_dir)
+    if stem and os.path.isfile(os.path.join(lesson_dir, stem + ".pbn")):
+        return os.path.join(lesson_dir, stem + ".pbn")
+    whole = whole_nesw_pbn(lesson_dir)
+    key = deal_key(whole) if whole else None
+    if not key:
+        return None
+    for f in sorted(os.listdir(lesson_dir)):
+        p = os.path.join(lesson_dir, f)
+        if f.endswith(".pbn") and os.path.isfile(p) and deal_key(p) == key:
+            return p
+    return None
+
+
 def full_lesson_pbn(lesson_dir):
     """The full-lesson PBN = the PBN at the lesson root that its sets were cut from (a
     lesson root may also hold companions such as exercises); failing that, the shallowest
     PBN that is not a sliced set, block-replication, or a single-view file. Returns path
     or None."""
-    stem = set_source_stem(lesson_dir)
-    if stem and os.path.isfile(os.path.join(lesson_dir, stem + ".pbn")):
-        return os.path.join(lesson_dir, stem + ".pbn")
+    src = source_pbn(lesson_dir)
+    if src:
+        return src
     cands = []
     for p in glob.glob(os.path.join(lesson_dir, "**", "*.pbn"), recursive=True):
         if SET_OR_VIEW.search(os.path.basename(p)):
@@ -85,7 +134,11 @@ def full_lesson_pbn(lesson_dir):
         depth = os.path.relpath(p, lesson_dir).count(os.sep)
         cands.append((depth, len(p), p))
     if not cands:
-        # fall back to any PBN (e.g. only sets exist)
+        # No lesson PBN kept (e.g. a tidied single-set lesson): the whole-lesson Full
+        # Table view holds the same boards. Then any PBN (e.g. only sets exist).
+        whole = whole_nesw_pbn(lesson_dir)
+        if whole:
+            return whole
         alls = glob.glob(os.path.join(lesson_dir, "**", "*.pbn"), recursive=True)
         return min(alls, key=len) if alls else None
     cands.sort()

@@ -187,13 +187,60 @@ def set_source_stem(lesson_dir):
     return None
 
 
+# A board's four hands, whichever seats they sit in: the same deal before and after
+# rotation. Hands are the space-separated fields after the "N:" of a [Deal] tag.
+DEAL_RE = re.compile(r'^\[Deal "[NESW]:([^"]*)"\]', re.M)
+WHOLE_NESW_RE = re.compile(r'^(?!.* Set \d+ )[^/]* \(\d+ hands?\)\s+NESW\.pbn$')
+
+
+def deal_key(path):
+    """The file's deals independent of seating, board by board; None if unreadable."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            deals = DEAL_RE.findall(f.read())
+    except OSError:
+        return None
+    return tuple(tuple(sorted(d.split())) for d in deals) or None
+
+
+def source_pbn(lesson_dir):
+    """The PBN at the lesson root that the sets were cut from, or None.
+
+    Usually it shares the sets' name ("X.pbn" beside "X Set 1 (4 hands) ..."). A collection
+    that names sets for the lesson rather than the deals file ("X practice deals.pbn" ->
+    "X (4 hands) ...") breaks that, and a lesson root may also hold companions (exercises),
+    so failing the name, the source is the root PBN holding the same deals as the
+    whole-lesson Full Table view -- rotation moves hands between seats, never changes them.
+    """
+    stem = set_source_stem(lesson_dir)
+    if stem and os.path.isfile(os.path.join(lesson_dir, stem + ".pbn")):
+        return os.path.join(lesson_dir, stem + ".pbn")
+    whole = None
+    for cur, dirs, files in os.walk(lesson_dir):
+        dirs[:] = sorted(d for d in dirs if not d.endswith("-Board Sets"))
+        for f in sorted(files):
+            if WHOLE_NESW_RE.match(f):
+                whole = os.path.join(cur, f)
+                break
+        if whole:
+            break
+    key = deal_key(whole) if whole else None
+    if not key:
+        return None
+    for f in sorted(os.listdir(lesson_dir)):
+        p = os.path.join(lesson_dir, f)
+        if f.endswith(".pbn") and os.path.isfile(p) and deal_key(p) == key:
+            return p
+    return None
+
+
 def lesson_stem(lesson_dir):
     """The filename stem shared by the lesson's files, e.g. 'Baker Bridge Ogust'."""
     for name in sorted(os.listdir(lesson_dir)):
         if name.endswith("_Intro.pdf"):
             return name[: -len("_Intro.pdf")]
     stem = set_source_stem(lesson_dir)
-    if stem and os.path.isfile(os.path.join(lesson_dir, stem + ".pbn")):
+    if stem:
         return stem
     for name in sorted(os.listdir(lesson_dir)):
         if name.endswith(".pbn"):
@@ -224,9 +271,9 @@ def scan_lesson(root, lesson_dir):
     # The lesson PBN is the one its sets were cut from; the lesson folder may also hold
     # companion PBNs (e.g. exercises).
     lesson_pbn = None
-    source = set_source_stem(lesson_dir)
-    if source and os.path.isfile(os.path.join(lesson_dir, source + ".pbn")):
-        lesson_pbn = rel(root, os.path.join(lesson_dir, source + ".pbn"))
+    source = source_pbn(lesson_dir)
+    if source:
+        lesson_pbn = rel(root, source)
     for name in entries:
         if lesson_pbn:
             break
