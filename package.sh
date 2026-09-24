@@ -94,6 +94,10 @@ STRIP_TAGS="${STRIP_TAGS:-}"
 # afterwards, rerun from copy_presentation.
 TIDY_LESSON_ROOT="${TIDY_LESSON_ROOT:-0}"
 
+# Every PDF is rendered with --no-page-furniture: the packaged pages are assembled
+# here, so the event header/headings and %PageFooter lines a PBN carries for
+# BridgeComposer printing (a source's own title, date, venue) are left off.
+
 # Tool paths
 BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-$HOME/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
 PDF_HANDOUTS_PATH="${PDF_HANDOUTS_PATH:-$HOME/Development/GitHub/pdf-handouts/target/release/pdf-handouts}"
@@ -523,7 +527,7 @@ action_pdf_presentation() {
         [[ -f "$pbn" ]] || continue
         local pdf="${pbn%.pbn}.pdf"
         trace "Converting to PDF: $pbn"
-        "$BRIDGE_WRANGLER_PATH" to-pdf -i "$pbn" -o "$pdf" || warn "Failed to convert: $pbn"
+        "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$pbn" -o "$pdf" || warn "Failed to convert: $pbn"
     done
 }
 
@@ -563,7 +567,7 @@ action_companions() {
     while IFS= read -r pbn; do
         [[ -n "$pbn" ]] || continue
         trace "Rendering companion: $pbn"
-        "$BRIDGE_WRANGLER_PATH" to-pdf -i "$pbn" -o "${pbn%.pbn}.pdf" \
+        "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$pbn" -o "${pbn%.pbn}.pdf" \
             || warn "Failed to render companion: $pbn"
     done < <(companion_pbns "$OUTPUT_DIR/$file")
 }
@@ -752,7 +756,7 @@ action_rotate_hands() {
                 [[ -f "$rotated" ]] || continue
                 local pdf="${rotated%.pbn}.pdf"
                 trace "Converting to PDF: $rotated"
-                "$BRIDGE_WRANGLER_PATH" to-pdf -i "$rotated" -o "$pdf" || warn "Failed to convert: $rotated"
+                "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$rotated" -o "$pdf" || warn "Failed to convert: $rotated"
             done
         done
     done
@@ -796,15 +800,25 @@ action_block_replicate() {
 
             trace "Block replicating: $nesw_file"
 
-            # Run block-replicate with PDF generation
-            "$BRIDGE_WRANGLER_PATH" block-replicate -i "$nesw_file" --pdf || warn "Failed to block-replicate: $nesw_file"
+            # Replicate, then render the PDF ourselves: block-replicate's own --pdf has
+            # no --no-page-furniture (it is otherwise the same to-pdf render).
+            if "$BRIDGE_WRANGLER_PATH" block-replicate -i "$nesw_file"; then
+                local replicated
+                for replicated in "${nesw_file%.pbn}"\ -\ *x*.pbn; do
+                    [[ -f "$replicated" ]] || continue
+                    "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$replicated" \
+                        -o "${replicated%.pbn}.pdf" || warn "Failed to render: $replicated"
+                done
+            else
+                warn "Failed to block-replicate: $nesw_file"
+            fi
 
             # Generate dealer summary PDF
             if [[ -x "$BRIDGE_WRANGLER_PATH" ]]; then
                 local base_name="${nesw_file%.pbn}"
                 local summary_pdf="${base_name} Dealer Summary.pdf"
                 trace "Generating dealer summary: $summary_pdf"
-                "$BRIDGE_WRANGLER_PATH" to-pdf -i "$nesw_file" -o "$summary_pdf" \
+                "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$nesw_file" -o "$summary_pdf" \
                     -l dealer-summary || warn "Failed to generate dealer summary: $nesw_file"
             fi
         done
@@ -866,7 +880,7 @@ action_declarers_plan() {
             # No -r board range. This was pinned to "1-4", which silently dropped
             # boards 5 and 6 of any larger set from the plan -- every board in the
             # set gets one.
-            "$BRIDGE_WRANGLER_PATH" to-pdf -i "$nesw_file" -o "$plan_pdf" \
+            "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$nesw_file" -o "$plan_pdf" \
                 -l declarers-plan-2up || warn "Failed to generate declarers plan: $nesw_file"
         done
     done
@@ -912,7 +926,7 @@ action_bidding_sheets() {
             local sheets_pdf="${base_name} Bidding Sheets.pdf"
 
             trace "Generating bidding sheets: $sheets_pdf"
-            "$BRIDGE_WRANGLER_PATH" to-pdf -i "$ns_file" -o "$sheets_pdf" \
+            "$BRIDGE_WRANGLER_PATH" to-pdf --no-page-furniture -i "$ns_file" -o "$sheets_pdf" \
                 -l bidding-sheets || warn "Failed to generate bidding sheets: $ns_file"
         done
     done
