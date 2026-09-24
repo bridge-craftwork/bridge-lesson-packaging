@@ -56,9 +56,28 @@ def lesson_dirs(root):
     return out
 
 
+# "X Set 2 (4 hands)  NESW.pbn" / "X (4 hands) NS.pdf" -> "X": the name of the lesson PBN
+# the sets were cut from.
+SET_FILE_STEM = re.compile(r'( Set \d+)? \(\d+ hands\).*$')
+
+
+def set_source_stem(lesson_dir):
+    """The stem shared by the lesson's set files, or None when it has none."""
+    for cur, _dirs, files in sorted(os.walk(lesson_dir)):
+        for f in sorted(files):
+            if SET_FILE_STEM.search(f):
+                return SET_FILE_STEM.sub('', f)
+    return None
+
+
 def full_lesson_pbn(lesson_dir):
-    """The full-lesson PBN = the shallowest PBN that is not a sliced set, block-replication,
-    or a single-view file. Returns path or None."""
+    """The full-lesson PBN = the PBN at the lesson root that its sets were cut from (a
+    lesson root may also hold companions such as exercises); failing that, the shallowest
+    PBN that is not a sliced set, block-replication, or a single-view file. Returns path
+    or None."""
+    stem = set_source_stem(lesson_dir)
+    if stem and os.path.isfile(os.path.join(lesson_dir, stem + ".pbn")):
+        return os.path.join(lesson_dir, stem + ".pbn")
     cands = []
     for p in glob.glob(os.path.join(lesson_dir, "**", "*.pbn"), recursive=True):
         if SET_OR_VIEW.search(os.path.basename(p)):
