@@ -29,6 +29,29 @@ collection supplies its deals and a small config, and gets the standard output.
 See **`CONTRACT.md`** for the full output structure, the per-lesson auto-slicing rule, the
 artifact list, and the optional `[SkillPath]` metadata pass-through.
 
+## Reporting on a packaged tree
+
+Two collection-agnostic tools read a finished materials tree and describe it:
+
+| Tool | Output | Purpose |
+|---|---|---|
+| `stats.py` | `stats.json` + `stats.html` | Shape of the collection — lesson count, boards per lesson, distribution, build durations |
+| `rotations_manifest.py` | `manifest.json` | Navigation index — category → lesson → set size → set number → table view, plus each lesson's intro PDF |
+
+```bash
+python3 rotations_manifest.py Rotations --name "My Collection"
+```
+
+`manifest.json` is what a client picker reads to offer the materials as choices: pick a
+lesson, a board-set size, a set, and a table view, and it has the paths to that set's PBN,
+PDF, bidding sheets, dealer summary, declarer's plan, block replication and merged handouts —
+along with the lesson intro, which is what lets someone assemble a full class day from the
+picker alone. Every path is relative to the tree root and POSIX-separated, so a web client
+joins it to a base URL directly (~42 KB gzipped for a 50-lesson collection).
+
+It is a *navigation* index only. Board identity — per-board tokens and stability — belongs to
+the collection's own producer manifest, not here.
+
 ## Requirements
 
 - [`bridge-wrangler`](https://github.com/bridge-craftwork/bridge-wrangler) — PBN rotation,
@@ -38,7 +61,7 @@ artifact list, and the optional `[SkillPath]` metadata pass-through.
 ## Status
 
 v1: `CONTRACT.md` + `package.sh` (the consolidated, config-driven builder) + `configs/*.conf` +
-`stats.py`. `package.sh` was ported from the most feature-complete existing script and validated
+`stats.py` + `rotations_manifest.py`. `package.sh` was ported from the most feature-complete existing script and validated
 to reproduce a collection's existing output structure byte-for-byte. Per-collection cutover
 (pointing each repo at the shared tool and retiring its own script) is the remaining step.
 
