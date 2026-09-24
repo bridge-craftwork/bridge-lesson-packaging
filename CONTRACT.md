@@ -49,11 +49,12 @@ app-specific processing belong to the collection, not here.
 | `lin` | also emit LIN files for online play | off |
 | `studentSeat` | the single-student seat for the `South` view | `S` |
 | `groupDir` | subfolder of per-lesson PBNs naming the collection's own board groupings | *(off)* |
-| `dealsGlob` | which PBN in a lesson folder holds the lesson's deals, when it holds several | `*.pbn` |
+| `dealsGlob` | which PBN in a lesson folder holds the lesson's deals, when it holds several. Generated files are named for its `{stem}` (`X practice deals.pbn` under `* practice deals.pbn` → `X (4 hands) NS.pbn`) | `*.pbn` |
 | `companionPbns` | per-lesson PBNs (e.g. exercises) rendered as-is and put at the front of the handouts; `{stem}` = the deals file's name less `dealsGlob`'s suffix | *(none)* |
 | `handoutViews` | which views get a merged Handouts PDF (`NESW`, `NS`, `S`) | `NESW` |
 | `rotateVul` | vulnerability after rotation: `standard` (by board number) or `rotate` (turns with the hands) | `standard` |
 | `stripTags` | tags / `%`directives / `%BCOptions` options removed from the deals PBN as it is copied | *(none)* |
+| `tidyLessonRoot` | once built, the lesson folder keeps only the documents it was given (lesson plans, intros); the copied PBNs and rendered companions are removed | off |
 
 **No collection identity, source, license, or repo name is part of this config** — those are
 the collection's concern, not the toolset's.
