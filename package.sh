@@ -14,14 +14,17 @@
 #   create_folders    Mirror the input taxonomy into the output tree
 #   copy_presentation Copy lesson PBNs (+ companion PDFs) from input to output
 #   pdf_presentation  Render the input PBNs to PDF (optional)
-#   slice_deals       Split each lesson into board sets (per SET_SIZES; only when boards > size)
+#   companions        Render the lesson's COMPANION_PBNS (e.g. exercises) to PDF
+#   slice_deals       Split each lesson into board sets (per SET_SIZES; only when boards > size).
+#                     A lesson that fits in the smallest size is one set, packaged flat:
+#                     its views sit directly in the lesson folder (no All/, no size folder).
 #   rotate_hands      Rotate to the ROTATE_PATTERNS views (default S,NS,NESW) via bridge-wrangler
 #   block_replicate   Replicate a set across tables (+ dealer summary) via bridge-wrangler
 #   declarers_plan    Declarer's-plan PDF, gated to DECLARER_PLAN_CATEGORY lessons
 #   bidding_sheets    Bidding-practice sheets
 #   lin              LIN files for online play (only when LIN=1)
 #   aggregate         Organize into Full Table / North-South / South
-#   merge_handouts    Merge Components into a single Handouts PDF per view
+#   merge_handouts    Merge Components into a single Handouts PDF per HANDOUT_VIEWS view
 #
 # Usage:
 #   package.sh --config configs/<collection>.conf <filter> <actions> [set sizes...]
@@ -32,7 +35,8 @@
 #   package.sh --config configs/grant.conf '*Finesse*' '*' 6
 #
 # Config (env or sourced --config file); see CONTRACT.md and configs/example.conf:
-#   INPUT_DIR, OUTPUT_DIR, ROTATE_PATTERNS, DECLARER_PLAN_CATEGORY, LIN,
+#   INPUT_DIR, OUTPUT_DIR, ROTATE_PATTERNS, DECLARER_PLAN_CATEGORY, LIN, GROUP_DIR,
+#   DEALS_GLOB, COMPANION_PBNS, HANDOUT_VIEWS, ROTATE_VUL, STRIP_TAGS,
 #   BRIDGE_WRANGLER_PATH, PDF_HANDOUTS_PATH
 
 set -e
@@ -64,6 +68,25 @@ LIN="${LIN:-0}"                              # 1 = also emit LIN files for onlin
 # subfolder of PBNs inside each lesson's input folder. Each becomes its own packaged
 # folder, treated exactly like All/. Empty = feature off. See CONTRACT.md.
 GROUP_DIR="${GROUP_DIR:-}"
+# Which PBN in a lesson folder holds the lesson's deals, when the folder holds more
+# than one (exercises, variants). The first match, sorted. A lesson with no match
+# still gets its companions copied, but no sets.
+DEALS_GLOB="${DEALS_GLOB:-*.pbn}"
+# Per-lesson companion PBNs (e.g. exercises), ';'-separated globs, in handout order.
+# Each is rendered to PDF as-is (not rotated) beside the lesson PBN and placed at the
+# front of every handout, after the intro. "{stem}" is the deals file's name with the
+# literal suffix of DEALS_GLOB removed ("X practice deals.pbn" under
+# "* practice deals.pbn" -> "X"), so a lesson picks up only its own companions.
+COMPANION_PBNS="${COMPANION_PBNS:-}"
+# Views that get a merged Handouts PDF: any of NESW NS S.
+HANDOUT_VIEWS="${HANDOUT_VIEWS:-NESW}"
+# Vulnerability after rotation: "standard" (by board number) or "rotate" (turns with
+# the deal, as the source had it relative to the hands).
+ROTATE_VUL="${ROTATE_VUL:-standard}"
+# Removed from the lesson's deals PBN as it is copied (companions are left alone).
+# Space-separated: "Name" drops [Name ...] tag lines, "%Name" drops %Name directive
+# lines, and "%BCOptions:Word" drops one option from the %BCOptions line.
+STRIP_TAGS="${STRIP_TAGS:-}"
 
 # Tool paths
 BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-$HOME/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
@@ -98,6 +121,7 @@ show_usage() {
     echo "             - create_folders"
     echo "             - copy_presentation"
     echo "             - pdf_presentation"
+    echo "             - companions"
     echo "             - slice_deals"
     echo "             - rotate_hands"
     echo "             - block_replicate"
@@ -141,6 +165,7 @@ ALL_ACTIONS=(
     "create_folders"
     "copy_presentation"
     "pdf_presentation"
+    "companions"
     "slice_deals"
     "rotate_hands"
     "block_replicate"
@@ -155,6 +180,7 @@ ALL_ACTIONS=(
 EXPANDABLE_ACTIONS=(
     "create_folders"
     "copy_presentation"
+    "companions"
     "slice_deals"
     "rotate_hands"
     "block_replicate"
@@ -296,13 +322,73 @@ filter_folders() {
     printf '%s\n' "${result[@]}" | sort
 }
 
+# The lesson's deals PBN in a folder: the first match of DEALS_GLOB, sorted. The
+# working copies this script makes from it all carry "(N hands)", so they never match.
+lesson_pbn() {
+    local folder="$1"
+    find "$folder" -maxdepth 1 -type f -name "$DEALS_GLOB" ! -name "*hands)*" 2>/dev/null \
+        | sort | head -1
+}
+
+# The deals file's name less the literal suffix of DEALS_GLOB -- "{stem}" in
+# COMPANION_PBNS. A glob that isn't "*<literal>" just drops ".pbn".
+lesson_stem() {
+    local name suffix="${DEALS_GLOB#\*}"
+    name=$(basename "$1")
+    [[ "$suffix" == "$DEALS_GLOB" || "$suffix" == *[*?[]* ]] && suffix=".pbn"
+    echo "${name%"$suffix"}"
+}
+
+# A lesson that fits in the smallest set size is a single set, packaged flat: slicing
+# it would only repeat the whole lesson once per size.
+is_single_set() {
+    local folder="$1"; shift
+    [[ $# -gt 0 ]] || return 1
+    local pbn; pbn=$(lesson_pbn "$folder")
+    [[ -n "$pbn" ]] || return 1
+    local boards; boards=$(get_hand_count "$pbn")
+    local s min="$1"
+    for s in "$@"; do [[ $s -lt $min ]] && min=$s; done
+    [[ $boards -gt 0 && $boards -le $min ]]
+}
+
+# Echo each folder holding one or more sets, newline separated: the lesson folder
+# itself for a single-set lesson, else each "{S}-Board Sets" folder that exists.
+set_folders() {
+    local folder="$1"; shift
+    if is_single_set "$folder" "$@"; then
+        echo "$folder"
+        return
+    fi
+    local s
+    for s in "$@"; do
+        [[ -d "$folder/$s-Board Sets" ]] && echo "$folder/$s-Board Sets"
+    done
+    return 0
+}
+
+# Drop the STRIP_TAGS lines/options from a PBN, in place.
+strip_tags() {
+    local file="$1" t
+    [[ -n "$STRIP_TAGS" ]] || return 0
+    local -a expr=()
+    for t in $STRIP_TAGS; do
+        case "$t" in
+            %BCOptions:*) expr+=(-e "/^%BCOptions /s/ ${t#%BCOptions:}( |\$)/\\1/") ;;
+            %*)           expr+=(-e "/^${t}([ :]|\$)/d") ;;
+            *)            expr+=(-e "/^\\[${t} /d") ;;
+        esac
+    done
+    sed -E "${expr[@]}" "$file" > "$file.strip" && mv "$file.strip" "$file"
+}
+
 # Name of a lesson's unsliced "whole lesson" folder: "All 48 boards". The count is
 # in the name because lessons vary widely in size, and the folder should say what it
 # holds without being opened. Same shape in every collection -- deliberately not
 # configurable, so no two collections' output trees can drift apart.
 all_dir_name() {
     local folder="$1" pbn n=0
-    pbn=$(find "$folder" -maxdepth 1 -name "*.pbn" -type f | head -1)
+    pbn=$(lesson_pbn "$folder")
     [[ -n "$pbn" ]] && n=$(get_hand_count "$pbn")
     echo "All $n boards"
 }
@@ -373,6 +459,9 @@ action_copy_presentation() {
         trace "Copied: $(basename "$pbn")"
     done
 
+    local deals; deals=$(lesson_pbn "$dst")
+    [[ -n "$deals" ]] && strip_tags "$deals"
+
     # Copy the lesson's group PBNs, each into a folder of its own, so that every
     # downstream action can treat a group exactly the way it treats All/.
     if [[ -n "$GROUP_DIR" && -d "$src/$GROUP_DIR" ]]; then
@@ -430,6 +519,47 @@ action_pdf_presentation() {
 }
 
 #---------------------------------------------------
+# Action: companions
+#---------------------------------------------------
+# Echo the lesson's companion PBNs (in the output lesson folder), in COMPANION_PBNS
+# order, newline separated.
+companion_pbns() {
+    local folder="$1" deals stem glob
+    [[ -n "$COMPANION_PBNS" ]] || return 0
+    deals=$(lesson_pbn "$folder")
+    stem=""
+    [[ -n "$deals" ]] && stem=$(lesson_stem "$deals")
+    local IFS=';'
+    for glob in $COMPANION_PBNS; do
+        # "{stem}" needs a deals file to resolve against; without one, skip that glob.
+        if [[ "$glob" == *"{stem}"* ]]; then
+            [[ -n "$stem" ]] || continue
+            glob="${glob//\{stem\}/$stem}"
+        fi
+        find "$folder" -maxdepth 1 -type f -name "$glob" 2>/dev/null | sort
+    done
+}
+
+action_companions() {
+    local file="$1"
+    trace "Executing companions for: $file"
+    [[ -n "$COMPANION_PBNS" ]] || return 0
+
+    if [[ ! -x "$BRIDGE_WRANGLER_PATH" ]]; then
+        warn "bridge-wrangler not found at $BRIDGE_WRANGLER_PATH; skipping companions"
+        return
+    fi
+
+    local pbn
+    while IFS= read -r pbn; do
+        [[ -n "$pbn" ]] || continue
+        trace "Rendering companion: $pbn"
+        "$BRIDGE_WRANGLER_PATH" to-pdf -i "$pbn" -o "${pbn%.pbn}.pdf" \
+            || warn "Failed to render companion: $pbn"
+    done < <(companion_pbns "$OUTPUT_DIR/$file")
+}
+
+#---------------------------------------------------
 # Action: slice_deals
 #---------------------------------------------------
 action_slice_deals() {
@@ -446,11 +576,10 @@ action_slice_deals() {
         return
     fi
 
-    # Find the first .pbn file
-    local pbn_file=$(find "$folder" -maxdepth 1 -name "*.pbn" -type f | head -1)
+    local pbn_file=$(lesson_pbn "$folder")
 
     if [[ -z "$pbn_file" ]]; then
-        warn "No .pbn file found in $folder"
+        warn "No deals PBN ($DEALS_GLOB) found in $folder"
         return
     fi
 
@@ -460,6 +589,13 @@ action_slice_deals() {
     local base_name=$(basename "$pbn_file" .pbn)
 
     trace "Found $total_boards boards"
+
+    # A single-set lesson is its own set, in the lesson folder: no All/, no size folder.
+    if is_single_set "$folder" "${slices[@]}"; then
+        cp "$pbn_file" "$folder/$base_name ($total_boards hands).pbn"
+        trace "Single set: $folder/$base_name ($total_boards hands).pbn"
+        return
+    fi
 
     # Create All folder and copy with hand count in name
     local all_folder="$folder/$(all_dir_name "$folder")"
@@ -570,17 +706,22 @@ action_rotate_hands() {
         [[ -n "$group_folder" ]] && folders_to_process+=("$group_folder")
     done < <(group_folders "$folder")
 
-    for slice in "${slices[@]}"; do
-        local slice_folder="$folder/$slice-Board Sets"
-        if [[ -d "$slice_folder" ]]; then
-            folders_to_process+=("$slice_folder")
-        fi
-    done
+    while IFS= read -r set_folder; do
+        [[ -n "$set_folder" ]] && folders_to_process+=("$set_folder")
+    done < <(set_folders "$folder" "${slices[@]}")
+
+    local -a vul_flag=()
+    [[ "$ROTATE_VUL" == "standard" ]] && vul_flag=(--standard-vul)
 
     for target_folder in "${folders_to_process[@]}"; do
         trace "Processing folder: $target_folder"
 
-        for pbn in "$target_folder"/*.pbn; do
+        # A single-set lesson's folder also holds the lesson PBN and its companions;
+        # only its "(N hands)" working copy is the set.
+        local set_glob="*.pbn"
+        [[ "$target_folder" == "$folder" ]] && set_glob="*hands).pbn"
+
+        for pbn in "$target_folder"/$set_glob; do
             [[ -f "$pbn" ]] || continue
 
             # Skip already rotated files
@@ -592,7 +733,7 @@ action_rotate_hands() {
 
             # Run rotation with multiple patterns: S, NS, NESW
             # bridge-wrangler will create separate output files for each pattern
-            "$BRIDGE_WRANGLER_PATH" rotate-deals -i "$pbn" -p "$ROTATE_PATTERNS" -b declarer --standard-vul || warn "Failed to rotate: $pbn"
+            "$BRIDGE_WRANGLER_PATH" rotate-deals -i "$pbn" -p "$ROTATE_PATTERNS" -b declarer "${vul_flag[@]}" || warn "Failed to rotate: $pbn"
 
             # Convert rotated PBNs to PDFs
             for rotated in "${pbn%.pbn}"\ -\ *.pbn; do
@@ -626,13 +767,14 @@ action_block_replicate() {
         return
     fi
 
-    for slice in "${slices[@]}"; do
-        local slice_folder="$folder/$slice-Board Sets"
+    # Each folder of sets: the size folders, or the lesson folder of a single-set lesson.
+    local -a set_dirs=()
+    local slice_folder
+    while IFS= read -r slice_folder; do
+        [[ -n "$slice_folder" ]] && set_dirs+=("$slice_folder")
+    done < <(set_folders "$folder" "${slices[@]}")
 
-        if [[ ! -d "$slice_folder" ]]; then
-            trace "Skipping missing slice folder: $slice_folder"
-            continue
-        fi
+    for slice_folder in "${set_dirs[@]}"; do
 
         trace "Processing block_replicate in: $slice_folder"
 
@@ -689,12 +831,14 @@ action_declarers_plan() {
 
     local folder="$OUTPUT_DIR/$file"
 
-    for slice in "${slices[@]}"; do
-        local slice_folder="$folder/$slice-Board Sets"
-        if [[ ! -d "$slice_folder" ]]; then
-            trace "Skipping missing board set folder: $slice_folder"
-            continue
-        fi
+    # Each folder of sets: the size folders, or the lesson folder of a single-set lesson.
+    local -a set_dirs=()
+    local slice_folder
+    while IFS= read -r slice_folder; do
+        [[ -n "$slice_folder" ]] && set_dirs+=("$slice_folder")
+    done < <(set_folders "$folder" "${slices[@]}")
+
+    for slice_folder in "${set_dirs[@]}"; do
 
         for nesw_file in "$slice_folder"/*\ -\ NESW.pbn; do
             [[ -f "$nesw_file" ]] || continue
@@ -737,13 +881,14 @@ action_bidding_sheets() {
         return
     fi
 
-    for slice in "${slices[@]}"; do
-        local slice_folder="$folder/$slice-Board Sets"
+    # Each folder of sets: the size folders, or the lesson folder of a single-set lesson.
+    local -a set_dirs=()
+    local slice_folder
+    while IFS= read -r slice_folder; do
+        [[ -n "$slice_folder" ]] && set_dirs+=("$slice_folder")
+    done < <(set_folders "$folder" "${slices[@]}")
 
-        if [[ ! -d "$slice_folder" ]]; then
-            trace "Skipping missing slice folder: $slice_folder"
-            continue
-        fi
+    for slice_folder in "${set_dirs[@]}"; do
 
         trace "Processing bidding_sheets in: $slice_folder"
 
@@ -769,6 +914,9 @@ action_bidding_sheets() {
 # each group folder (a group is packaged exactly like All/).
 aggregate_folder() {
         local bs_folder="$1"
+        # Set when bs_folder is a single-set lesson's own folder, which also holds the
+        # lesson PBN, companions and intro: then only the set's "(N hands)" files move.
+        local only_sets="${2:-}"
 
         if [[ ! -d "$bs_folder" ]]; then
             trace "Skipping missing folder: $bs_folder"
@@ -788,6 +936,7 @@ aggregate_folder() {
         for f in "$bs_folder"/*; do
             [[ -f "$f" ]] || continue
             local fname=$(basename "$f")
+            [[ -n "$only_sets" && "$fname" != *"hands)"* ]] && continue
 
             if [[ "$fname" == *NESW* ]] || [[ "$fname" == *"Bidding Sheets"* ]] || [[ "$fname" == *"Dealer Summary"* ]] || [[ "$fname" == *"Declarers Plan"* ]]; then
                 mv "$f" "$full_table/" 2>/dev/null || true
@@ -874,13 +1023,17 @@ action_aggregate() {
     while IFS= read -r group_folder; do
         [[ -n "$group_folder" ]] && targets+=("$group_folder")
     done < <(group_folders "$folder")
-    for slice in "${slices[@]}"; do
-        targets+=("$folder/$slice-Board Sets")
-    done
+    while IFS= read -r set_folder; do
+        [[ -n "$set_folder" ]] && targets+=("$set_folder")
+    done < <(set_folders "$folder" "${slices[@]}")
 
     local target
     for target in "${targets[@]}"; do
-        aggregate_folder "$target"
+        if [[ "$target" == "$folder" ]]; then
+            aggregate_folder "$target" only_sets
+        else
+            aggregate_folder "$target"
+        fi
     done
 }
 
@@ -898,54 +1051,112 @@ action_merge_handouts() {
 
     local folder="$OUTPUT_DIR/$file"
 
-    for slice in "${slices[@]}"; do
-        local full_table="$folder/$slice-Board Sets/Full Table"
-        if [[ ! -d "$full_table" ]]; then
-            trace "Skipping missing Full Table folder: $full_table"
-            continue
-        fi
+    # The lesson's rendered companions, in COMPANION_PBNS order (see action_companions).
+    local -a companion_pdfs=()
+    local pbn
+    while IFS= read -r pbn; do
+        [[ -n "$pbn" && -f "${pbn%.pbn}.pdf" ]] && companion_pdfs+=("${pbn%.pbn}.pdf")
+    done < <(companion_pbns "$folder")
 
-        # Find the Intro PDF (one level up from Full Table)
-        local bs_folder="$folder/$slice-Board Sets"
+    local -a set_dirs=()
+    local bs_folder
+    while IFS= read -r bs_folder; do
+        [[ -n "$bs_folder" ]] && set_dirs+=("$bs_folder")
+    done < <(set_folders "$folder" "${slices[@]}")
+
+    for bs_folder in "${set_dirs[@]}"; do
+        # Find the Intro PDF (one level up from the view folders)
         local intro_pdf=""
         for f in "$bs_folder"/*_Intro.pdf; do
             [[ -f "$f" ]] && intro_pdf="$f" && break
         done
 
-        # Drive the merge off each set's lesson-hands (NESW) PDF, NOT the Declarers Plan --
-        # the plan is optional (declarer-play lessons only), but every lesson still gets a
-        # handout (intro + dealer summary + hands, plus the plan when it exists).
-        for nesw_pdf in "$full_table"/*\ NESW.pdf; do
-            [[ -f "$nesw_pdf" ]] || continue
-
-            # e.g. "Baker Bridge Ogust Set 1 (4 hands)  NESW.pdf"
-            local base="${nesw_pdf%.pdf}"
-            local summary_pdf="${base} Dealer Summary.pdf"
-            local plan_pdf="${base} Declarers Plan.pdf"   # present only for declarer-play lessons
-
-            if [[ ! -f "$summary_pdf" ]]; then
-                warn "Missing dealer summary for merge: $summary_pdf"
-                continue
-            fi
-
-            # Derive handout name: strip the "(N hands) NESW" portion
-            local handout_base=$(basename "$base" | sed -E 's/ *\([0-9]+ hands\) +NESW$//')
-            local handout_pdf="$full_table/${handout_base} Handouts.pdf"
-
-            # Stage components with numeric prefixes to control merge order.
-            local components="$full_table/.components"
-            mkdir -p "$components"
-            local n=1
-            [[ -n "$intro_pdf" ]]  && cp "$intro_pdf"   "$components/$n. Intro.pdf"          && ((n++))
-            [[ -f "$plan_pdf" ]]   && cp "$plan_pdf"    "$components/$n. Declarers Plan.pdf"  && ((n++))
-            cp "$summary_pdf" "$components/$n. Dealer Summary.pdf" && ((n++))
-            cp "$nesw_pdf"    "$components/$n. Lesson Hands.pdf"
-
-            trace "Merging handout: $handout_pdf"
-            "$PDF_HANDOUTS_PATH" merge -o "$handout_pdf" \
-                "$components"/*.pdf || warn "Failed to merge handout: $handout_pdf"
-            rm -rf "$components"
+        local view
+        for view in $HANDOUT_VIEWS; do
+            case "$view" in
+                NESW) merge_full_table "$bs_folder/Full Table" ;;
+                NS)   merge_view "$bs_folder/North-South" "NS" "North-South" ;;
+                S)    merge_view "$bs_folder/South" "South" "South" ;;
+                *)    warn "Unknown HANDOUT_VIEWS entry: $view" ;;
+            esac
         done
+    done
+}
+
+# Copy the intro and companions into $components, numbered from 1; echo the next number.
+stage_front_matter() {
+    local components="$1" n=1 c
+    [[ -n "$intro_pdf" ]] && cp "$intro_pdf" "$components/$n. Intro.pdf" && ((n++))
+    for c in "${companion_pdfs[@]}"; do
+        cp "$c" "$components/$n. $(basename "$c")" && ((n++))
+    done
+    echo "$n"
+}
+
+# Full Table handout: intro, companions, declarer's plan, dealer summary, hands.
+# Uses intro_pdf and companion_pdfs from action_merge_handouts.
+merge_full_table() {
+    local full_table="$1"
+    if [[ ! -d "$full_table" ]]; then
+        trace "Skipping missing Full Table folder: $full_table"
+        return
+    fi
+
+    # Drive the merge off each set's lesson-hands (NESW) PDF, NOT the Declarers Plan --
+    # the plan is optional (declarer-play lessons only), but every lesson still gets a
+    # handout (intro + dealer summary + hands, plus the plan when it exists).
+    for nesw_pdf in "$full_table"/*\ NESW.pdf; do
+        [[ -f "$nesw_pdf" ]] || continue
+
+        # e.g. "Baker Bridge Ogust Set 1 (4 hands)  NESW.pdf"
+        local base="${nesw_pdf%.pdf}"
+        local summary_pdf="${base} Dealer Summary.pdf"
+        local plan_pdf="${base} Declarers Plan.pdf"   # present only for declarer-play lessons
+
+        if [[ ! -f "$summary_pdf" ]]; then
+            warn "Missing dealer summary for merge: $summary_pdf"
+            continue
+        fi
+
+        # Derive handout name: strip the "(N hands) NESW" portion
+        local handout_base=$(basename "$base" | sed -E 's/ *\([0-9]+ hands\) +NESW$//')
+        local handout_pdf="$full_table/${handout_base} Handouts.pdf"
+
+        # Stage components with numeric prefixes to control merge order.
+        local components="$full_table/.components"
+        mkdir -p "$components"
+        local n; n=$(stage_front_matter "$components")
+        [[ -f "$plan_pdf" ]]   && cp "$plan_pdf"    "$components/$n. Declarers Plan.pdf"  && ((n++))
+        cp "$summary_pdf" "$components/$n. Dealer Summary.pdf" && ((n++))
+        cp "$nesw_pdf"    "$components/$n. Lesson Hands.pdf"
+
+        trace "Merging handout: $handout_pdf"
+        "$PDF_HANDOUTS_PATH" merge -o "$handout_pdf" \
+            "$components"/*.pdf || warn "Failed to merge handout: $handout_pdf"
+        rm -rf "$components"
+    done
+}
+
+# North-South / South handout: intro, companions, that view's hands.
+# $2 is the view's filename tag ("(N hands) NS"), $3 its handout label.
+merge_view() {
+    local view_dir="$1" tag="$2" label="$3"
+    [[ -d "$view_dir" ]] || { trace "Skipping missing view folder: $view_dir"; return; }
+
+    for hands_pdf in "$view_dir"/*hands\)\ "$tag".pdf; do
+        [[ -f "$hands_pdf" ]] || continue
+        local handout_base=$(basename "${hands_pdf%.pdf}" | sed -E "s/ *\\([0-9]+ hands\\) +$tag\$//")
+        local handout_pdf="$view_dir/${handout_base} Handouts $label.pdf"
+
+        local components="$view_dir/.components"
+        mkdir -p "$components"
+        local n; n=$(stage_front_matter "$components")
+        cp "$hands_pdf" "$components/$n. Lesson Hands.pdf"
+
+        trace "Merging handout: $handout_pdf"
+        "$PDF_HANDOUTS_PATH" merge -o "$handout_pdf" \
+            "$components"/*.pdf || warn "Failed to merge handout: $handout_pdf"
+        rm -rf "$components"
     done
 }
 
@@ -966,12 +1177,14 @@ action_lin() {
     while IFS= read -r group_folder; do
         [[ -n "$group_folder" ]] && targets+=("$group_folder")
     done < <(group_folders "$folder")
-    for slice in "${slices[@]}"; do
-        [[ -d "$folder/$slice-Board Sets" ]] && targets+=("$folder/$slice-Board Sets")
-    done
+    while IFS= read -r set_folder; do
+        [[ -n "$set_folder" ]] && targets+=("$set_folder")
+    done < <(set_folders "$folder" "${slices[@]}")
     for t in "${targets[@]}"; do
         for pbn in "$t"/*\ -\ *.pbn; do      # rotated per-view PBNs
             [[ -f "$pbn" ]] || continue
+            # A single-set lesson's folder also holds the lesson's own PBNs.
+            [[ "$t" == "$folder" && "$pbn" != *"hands) - "* ]] && continue
             trace "LIN: $pbn"
             "$BRIDGE_WRANGLER_PATH" to-lin -i "$pbn" -o "${pbn%.pbn}.lin" \
                 || warn "Failed to generate LIN: $pbn"
@@ -1029,6 +1242,9 @@ for action in $ACTIONS; do
                 ;;
             copy_presentation)
                 action_copy_presentation "$folder"
+                ;;
+            companions)
+                action_companions "$folder"
                 ;;
             pdf_presentation)
                 action_pdf_presentation "$folder"

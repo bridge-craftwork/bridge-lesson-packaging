@@ -49,6 +49,11 @@ app-specific processing belong to the collection, not here.
 | `lin` | also emit LIN files for online play | off |
 | `studentSeat` | the single-student seat for the `South` view | `S` |
 | `groupDir` | subfolder of per-lesson PBNs naming the collection's own board groupings | *(off)* |
+| `dealsGlob` | which PBN in a lesson folder holds the lesson's deals, when it holds several | `*.pbn` |
+| `companionPbns` | per-lesson PBNs (e.g. exercises) rendered as-is and put at the front of the handouts; `{stem}` = the deals file's name less `dealsGlob`'s suffix | *(none)* |
+| `handoutViews` | which views get a merged Handouts PDF (`NESW`, `NS`, `S`) | `NESW` |
+| `rotateVul` | vulnerability after rotation: `standard` (by board number) or `rotate` (turns with the hands) | `standard` |
+| `stripTags` | tags / `%`directives / `%BCOptions` options removed from the deals PBN as it is copied | *(none)* |
 
 **No collection identity, source, license, or repo name is part of this config** — those are
 the collection's concern, not the toolset's.
@@ -64,6 +69,13 @@ from its own board count** — there is no global "slice / don't slice" switch:
 One rule scales to any collection: a collection of large lessons slices into many sets; a
 collection of small lessons (every lesson ≤ S) emits one set each and never multiplies. No
 per-collection special-casing, and no wasted "Set 1" wrapper on small lessons.
+
+**A single-set lesson is packaged flat.** When B ≤ the *smallest* declared size, the lesson
+is its own set: its table views sit directly in the lesson folder, with the full set
+artifacts (dealer summary, bidding sheets, declarer's plan, replication, handouts), and
+there is no `All {B} boards/` copy and no `{S}-Board Sets/` folder — either would only repeat
+the same boards. A larger lesson is emitted once per size it exceeds; a size it fits inside
+is skipped rather than repeating the whole lesson.
 
 ## Standard per-lesson output
 
@@ -87,8 +99,16 @@ For a lesson of *B* boards:
 
 - **`<set>`** = `Set N (K hands)` when the lesson is sliced; a single-set lesson omits the set
   number (e.g. `(B hands)` or a plain `practice deals` label per `namePrefix` style).
-- When `setSizes` has more than one size, the lesson is emitted once per size, each under its
-  own `{S}-Board Sets/` folder.
+- When `setSizes` has more than one size, the lesson is emitted once per size it exceeds,
+  each under its own `{S}-Board Sets/` folder.
+- A single-set lesson (B ≤ the smallest size) has no set folders: its views are directly
+  under `{Lesson}/`.
+
+```
+{Lesson}/                                 single-set lesson (flat)
+  {Lesson}.pbn, companion PDFs/PBNs
+  Full Table/  North-South/  South/       the views, with the full set artifacts
+```
 
 ### Collection-defined groups
 
@@ -132,7 +152,7 @@ must ignore it, or a lesson that has one stops looking like a leaf.
 | full-lesson PBN | required | lesson |
 | per-view PBN + PDF | required | each set × view |
 | block-replication `{K}x{T}` | if `replicateTables` | each set |
-| merged Handouts PDF | required | each view |
+| merged Handouts PDF | required | each view in `handoutViews` |
 | Bidding Sheets | required | Full Table |
 | Dealer Summary | required | Full Table |
 | Declarer's Plan | optional (`declarerPlan`) | Full Table |

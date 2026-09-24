@@ -15,6 +15,9 @@ the shape of the packaged materials so a client can offer them as choices:
 plus the lesson's companion intro PDF, which is what lets someone assemble a full
 lesson set for a class day from the picker alone.
 
+A lesson that fits in one set is packaged flat (its views sit directly in the lesson
+folder): it has no `setSizes`, and `all` carries the set's full artifacts.
+
 Schema:
 
     {
@@ -33,6 +36,7 @@ Schema:
             "boards": 10,
             "intro": "<relative path>|null",
             "lessonPbn": "<relative path>|null",
+            "documents": ["<relative path>", ...],   # other lesson-root PDFs; only when any
             "all": {"boards": 10, "views": {"Full Table": {...}, ...}},
             "setSizes": [
               {"size": 4,
@@ -76,6 +80,8 @@ SET_RE = re.compile(r"\bSet (\d+)\b")
 HANDS_RE = re.compile(r"\((\d+) hands?\)")
 # Block replication, e.g. "Set 1 - 4x9" = 4 boards across 9 tables.
 REPLICATED_RE = re.compile(r" - (\d+x\d+)$")
+# A set file's name less its set/hands/view suffix: the lesson PBN it was cut from.
+SET_FILE_STEM_RE = re.compile(r"( Set \d+)? \(\d+ hands?\).*$")
 ALL_DIR_RE = re.compile(r"^All (\d+) boards$")
 SET_DIR_RE = re.compile(r"^(\d+)-Board Sets$")
 BOARD_RE = re.compile(r"^\[Board ", re.M)
@@ -102,7 +108,7 @@ def classify(stem, view):
         return "dealerSummary"
     if stem.endswith(" Declarers Plan"):
         return "declarersPlan"
-    if stem.endswith(" Handouts"):
+    if stem.endswith(" Handouts") or stem.endswith(" Handouts " + view):
         return "handouts"
     return None
 
@@ -172,22 +178,41 @@ def find_intro(root, lesson_dir):
     return None
 
 
+def set_source_stem(lesson_dir):
+    """The stem of the lesson PBN the sets were cut from, from the first set file found."""
+    for _cur, _dirs, files in sorted(os.walk(lesson_dir)):
+        for name in sorted(files):
+            if SET_FILE_STEM_RE.search(name):
+                return SET_FILE_STEM_RE.sub("", name)
+    return None
+
+
 def lesson_stem(lesson_dir):
     """The filename stem shared by the lesson's files, e.g. 'Baker Bridge Ogust'."""
     for name in sorted(os.listdir(lesson_dir)):
         if name.endswith("_Intro.pdf"):
             return name[: -len("_Intro.pdf")]
+    stem = set_source_stem(lesson_dir)
+    if stem and os.path.isfile(os.path.join(lesson_dir, stem + ".pbn")):
+        return stem
     for name in sorted(os.listdir(lesson_dir)):
         if name.endswith(".pbn"):
             return os.path.splitext(name)[0]
     return os.path.basename(lesson_dir)
 
 
+def is_flat(path):
+    """A single-set lesson: its view folders sit directly in the lesson folder."""
+    return any(os.path.isdir(os.path.join(path, v)) for v in VIEWS)
+
+
 def is_lesson_dir(path):
-    """A lesson folder holds an 'All N boards' or '{S}-Board Sets' child."""
+    """A lesson folder holds an 'All N boards' or '{S}-Board Sets' child, or (a
+    single-set lesson) the view folders themselves."""
     try:
-        return any(ALL_DIR_RE.match(e) or SET_DIR_RE.match(e)
-                   for e in os.listdir(path) if os.path.isdir(os.path.join(path, e)))
+        return is_flat(path) or any(
+            ALL_DIR_RE.match(e) or SET_DIR_RE.match(e)
+            for e in os.listdir(path) if os.path.isdir(os.path.join(path, e)))
     except OSError:
         return False
 
@@ -196,11 +221,17 @@ def scan_lesson(root, lesson_dir):
     entries = sorted(os.listdir(lesson_dir))
     stem = lesson_stem(lesson_dir)
 
+    # The lesson PBN is the one its sets were cut from; the lesson folder may also hold
+    # companion PBNs (e.g. exercises).
     lesson_pbn = None
+    source = set_source_stem(lesson_dir)
+    if source and os.path.isfile(os.path.join(lesson_dir, source + ".pbn")):
+        lesson_pbn = rel(root, os.path.join(lesson_dir, source + ".pbn"))
     for name in entries:
+        if lesson_pbn:
+            break
         if name.endswith(".pbn") and os.path.isfile(os.path.join(lesson_dir, name)):
             lesson_pbn = rel(root, os.path.join(lesson_dir, name))
-            break
 
     out = {
         "name": os.path.basename(lesson_dir),
@@ -212,6 +243,21 @@ def scan_lesson(root, lesson_dir):
         "all": None,
         "setSizes": [],
     }
+
+    # Lesson-root PDFs besides the intro (lesson plans, rendered exercises). The key is
+    # left out when there are none, so trees without them describe exactly as before.
+    documents = [rel(root, os.path.join(lesson_dir, n)) for n in entries
+                 if n.lower().endswith(".pdf") and not n.endswith("_Intro.pdf")
+                 and os.path.isfile(os.path.join(lesson_dir, n))]
+    if documents:
+        out["documents"] = documents
+
+    if is_flat(lesson_dir):
+        by_set = merge_views(root, lesson_dir)
+        whole = by_set.get(0) or next(iter(by_set.values()), None)
+        if whole:
+            out["boards"] = whole["boards"]
+            out["all"] = {"boards": whole["boards"], "views": whole["views"]}
 
     for name in entries:
         sub = os.path.join(lesson_dir, name)
