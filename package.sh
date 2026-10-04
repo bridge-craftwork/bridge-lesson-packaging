@@ -99,8 +99,8 @@ TIDY_LESSON_ROOT="${TIDY_LESSON_ROOT:-0}"
 # BridgeComposer printing (a source's own title, date, venue) are left off.
 
 # Tool paths
-BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-$HOME/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
-PDF_HANDOUTS_PATH="${PDF_HANDOUTS_PATH:-$HOME/Development/GitHub/pdf-handouts/target/release/pdf-handouts}"
+BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-/Volumes/Express2T/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
+PDF_HANDOUTS_PATH="${PDF_HANDOUTS_PATH:-/Volumes/Express2T/Development/GitHub/pdf-handouts/target/release/pdf-handouts}"
 
 # Trace mode (set TRACE=1 to enable)
 TRACE=${TRACE:-0}
