@@ -38,7 +38,7 @@
 # Config (env or sourced --config file); see CONTRACT.md and configs/example.conf:
 #   INPUT_DIR, OUTPUT_DIR, ROTATE_PATTERNS, DECLARER_PLAN_CATEGORY, LIN, GROUP_DIR,
 #   DEALS_GLOB, COMPANION_PBNS, HANDOUT_VIEWS, ROTATE_VUL, STRIP_TAGS, TIDY_LESSON_ROOT,
-#   BRIDGE_WRANGLER_PATH, PDF_HANDOUTS_PATH
+#   BRIDGE_WRANGLER_PATH, PDF_HANDOUTS_PATH, REBUILD_BRIDGE_TOOLS
 
 set -e
 
@@ -101,6 +101,13 @@ TIDY_LESSON_ROOT="${TIDY_LESSON_ROOT:-0}"
 # Tool paths
 BRIDGE_WRANGLER_PATH="${BRIDGE_WRANGLER_PATH:-/Volumes/Express2T/Development/GitHub/bridge-wrangler/target/release/bridge-wrangler}"
 PDF_HANDOUTS_PATH="${PDF_HANDOUTS_PATH:-/Volumes/Express2T/Development/GitHub/pdf-handouts/target/release/pdf-handouts}"
+
+# Rebuild the bridge CLIs before packaging (1 = yes, 0 = skip). This used to be a
+# nightly launchd job, but launchd can't read the Express where the checkouts live.
+# Without it a stale binary goes unnoticed: nothing fails, you just get last
+# month's output. Only applies when the tool paths are local target/release builds.
+REBUILD_BRIDGE_TOOLS="${REBUILD_BRIDGE_TOOLS:-1}"
+REBUILD_BRIDGE_TOOLS_SCRIPT="${REBUILD_BRIDGE_TOOLS_SCRIPT:-/Volumes/Express2T/Development/GitHub/bridge-craftwork-platform/mac/scripts/rebuild-bridge-tools.sh}"
 
 # Trace mode (set TRACE=1 to enable)
 TRACE=${TRACE:-0}
@@ -1249,6 +1256,17 @@ echo "Current directory: $(pwd)"
 echo "Filter: $FILTER"
 echo "Slices: ${SLICES[*]:-none}"
 echo ""
+
+# Bring the local builds up to date. A failed build stops here rather than packaging
+# with the previous binary.
+if [[ "$REBUILD_BRIDGE_TOOLS" == "1" && ( "$BRIDGE_WRANGLER_PATH" == */target/release/* || "$PDF_HANDOUTS_PATH" == */target/release/* ) ]]; then
+    if [[ ! -x "$REBUILD_BRIDGE_TOOLS_SCRIPT" ]]; then
+        warn "rebuild-bridge-tools not found at $REBUILD_BRIDGE_TOOLS_SCRIPT; tools may be stale"
+    elif ! "$REBUILD_BRIDGE_TOOLS_SCRIPT"; then
+        error "rebuild-bridge-tools failed (see above). Fix the build, or rerun with REBUILD_BRIDGE_TOOLS=0 to package with the existing binaries."
+    fi
+    echo ""
+fi
 
 # Check bridge-wrangler
 if [[ ! -x "$BRIDGE_WRANGLER_PATH" ]]; then
